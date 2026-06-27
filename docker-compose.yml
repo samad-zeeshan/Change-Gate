@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: change_gate
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/02_rls.sql:/docker-entrypoint-initdb.d/02_rls.sql:ro
+      - ./db/03_seed.sql:/docker-entrypoint-initdb.d/03_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d change_gate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo done"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+
+  mcp-server:
+    build: .
+    command: ["python", "-m", "change_gate.server.app"]
+    environment:
+      CHANGE_GATE_PG_DSN: "postgresql://change_gate_app:app_password@postgres:5432/change_gate"
+      CHANGE_GATE_ISSUER: "http://keycloak:8080/realms/change-gate"
+      CHANGE_GATE_JWKS_URI: "http://keycloak:8080/realms/change-gate/protocol/openid-connect/certs"
+      CHANGE_GATE_RESOURCE_URL: "http://localhost:9000/mcp"
+      CHANGE_GATE_HOST: "0.0.0.0"
+      CHANGE_GATE_PORT: "9000"
+      CHANGE_GATE_NOW: "2026-06-25T12:00:00+00:00"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OTEL_SERVICE_NAME: "change-gate-mcp"
+    ports:
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+
+  agent:
+    build: .
+    entrypoint: ["/app/scripts/run_demo.sh"]
+    environment:
+      CHANGE_GATE_ISSUER: "http://keycloak:8080/realms/change-gate"
+      CHANGE_GATE_RESOURCE_URL: "http://localhost:9000/mcp"
+      CHANGE_GATE_MCP_URL: "http://mcp-server:9000/mcp"
+      CHANGE_GATE_CLIENT_ID: "change-gate-agent"
+      CHANGE_GATE_CLIENT_SECRET: "agent-secret"
+      KEYCLOAK_TOKEN_URL: "http://keycloak:8080/realms/change-gate/protocol/openid-connect/token"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OTEL_SERVICE_NAME: "change-gate-agent"
+    depends_on:
+      mcp-server:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  pgdata:
