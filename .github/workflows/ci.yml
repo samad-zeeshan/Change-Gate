@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  in-image-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Offline suite in python:3.12-slim (from the lock)
+        run: |
+          docker run --rm -v "$PWD":/app -w /app python:3.12-slim sh -c '
+            set -e
+            pip install --upgrade pip
+            pip install -r requirements.lock
+            pip install -e . --no-deps
+            ruff check src eval db tests --select F
+            pytest -q
+          '
