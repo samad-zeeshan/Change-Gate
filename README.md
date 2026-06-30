@@ -1,4 +1,4 @@
-# ChangeGate
+# Change-Gate
 
 A multi-tenant approval gate for config changes and feature-flag flips. It scores how risky a change is, decides whether to approve it automatically or send it to a human, and writes a tamper-evident record of every decision.
 
