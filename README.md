@@ -1,4 +1,4 @@
-# Change-Gate
+# ChangeGate
 
 A multi-tenant approval gate for config changes and feature-flag flips. It scores how risky a change is, decides whether to approve it automatically or send it to a human, and writes a tamper-evident record of every decision.
 
@@ -9,6 +9,24 @@ The project pairs a LangGraph agent with a secure MCP server. The agent orchestr
 Most outages start with a change someone made. A flag flip in prod, a timeout bumped a little too far, a config edit during a freeze window. The safe changes and the dangerous ones look almost identical at the moment they are requested.
 
 Change-Gate sits in front of those changes. Low-risk ones go through on their own. Anything that crosses a risk line gets routed to a person with the full reasoning attached, so the human spends time on the calls that actually matter.
+
+## Demo
+
+Two change requests through the same gate. A low-risk feature-flag flip in `dev` is auto-approved; a `prod` change that lands inside a freeze window is denied outright so the same engine, opposite outcomes, both reasoned and audited.
+
+![Change-Gate deciding two requests: cr-001 auto-approved in dev, cr-003 denied on a freeze-window collision in prod](demo.gif)
+
+Reproduce it offline, no Docker:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo.ps1
+```
+
+### Reliability under failure
+
+As transport failures are injected, the agent keeps reaching the correct decision with the resilience layer **on** (green), while a single un-retried error ends the run with it **off** (red). Across the entire grid, unsafe auto-approvals stay at zero.
+
+![Task success rate versus injected-failure rate: with resilience on the line stays near 100 percent, with it off it collapses toward zero](eval/chart.svg)
 
 ## How a request flows
 
