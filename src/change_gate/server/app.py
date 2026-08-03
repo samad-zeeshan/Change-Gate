@@ -129,11 +129,14 @@ def build_server(cfg: Settings | None = None) -> FastMCP:
 
 
     @mcp.tool()
-    def record_decision(request_id: str, explanation: str = "", force_route: bool = False) -> dict:
+    def record_decision(
+        request_id: str, explanation: str = "", force_route: bool = False, trace_id: str = ""
+    ) -> dict:
         with telemetry.span("tool.record_decision", tool="record_decision"):
             return _wrap(
                 lambda s: s.record_decision(
-                    request_id, now=_now(), explanation=explanation, force_route=force_route
+                    request_id, now=_now(), trace_id=trace_id, explanation=explanation,
+                    force_route=force_route,
                 ),
                 require=(SCOPE_APPROVE,),
             )

@@ -92,7 +92,9 @@ def node_risk(state: AgentState, config: RunnableConfig) -> dict:
     rid = state["request_id"]
     with telemetry.span("agent.risk", tool="assess_change_risk", request_id=rid) as sp:
         try:
-            risk = deps.client.call("assess_change_risk", request_id=rid, now=state["now"])
+            # No now= here. The server owns the clock, so a caller cannot move the
+            # freeze check by picking its own instant.
+            risk = deps.client.call("assess_change_risk", request_id=rid)
             sp.set("risk.band", risk.get("band"))
             sp.set("outcome", "ok")
             return {"risk": risk}
@@ -120,7 +122,6 @@ def node_decide(state: AgentState, config: RunnableConfig) -> dict:
             result = deps.client.call(
                 "record_decision",
                 request_id=rid,
-                now=state["now"],
                 trace_id=deps.trace_id,
                 force_route=degraded,
             )

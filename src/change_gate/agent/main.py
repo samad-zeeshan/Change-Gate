@@ -4,9 +4,10 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime
 
 from .. import telemetry
-from ..clock import SystemClock
+from ..clock import FixedClock, ensure_utc
 from ..data import seed
 from ..db.repository import InMemoryRepository
 from ..security import (
@@ -40,7 +41,10 @@ def _build_deps(args) -> AgentDeps:
             scopes=frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD}),
         )
         repo = InMemoryRepository(args.tenant)
-        service = ToolService(repo, SystemClock(), principal=principal)
+        # --now pins the in-process server clock, the same job CHANGE_GATE_NOW does
+        # for the real server. The agent itself never sends a time.
+        clock = FixedClock(ensure_utc(datetime.fromisoformat(args.now)))
+        service = ToolService(repo, clock, principal=principal)
         inner = InProcessToolClient(service)
 
     client = ResilientToolClient(
