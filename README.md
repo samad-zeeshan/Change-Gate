@@ -10,6 +10,25 @@ Most outages start with a change someone made. A flag flip in prod, a timeout bu
 
 Change-Gate sits in front of those changes. Low-risk ones go through on their own. Anything that crosses a risk line gets routed to a person with the full reasoning attached, so the human spends time on the calls that actually matter.
 
+## How it works
+
+A LangGraph agent calls tools on an OAuth-protected MCP server, and the server scores the change, decides, and writes a hash-chained audit entry to Postgres.
+
+![System overview](docs/diagrams/overview.png)
+
+The agent side (left) handles orchestration and retries. The server side checks the token, runs the deterministic risk engine, and is the only part that writes.
+
+![Deciding one change request](docs/diagrams/main-flow.png)
+
+One request from token to decision. `record_decision` recomputes validation and risk itself instead of trusting what the agent read earlier.
+
+![Data model](docs/diagrams/data-model.png)
+
+Ten Postgres tables, all keyed by `tenant_id` and isolated with row-level security. The audit log is insert-only.
+
+Interactive versions with pan, zoom and theme switch (data-model.html has the theme switch only): `docs/diagrams/overview.html`, `docs/diagrams/main-flow.html`, `docs/diagrams/data-model.html`
+
+
 ## Demo
 
 Two change requests through the same gate. A low-risk feature-flag flip in `dev` is auto-approved; a `prod` change that lands inside a freeze window is denied outright so the same engine, opposite outcomes, both reasoned and audited.

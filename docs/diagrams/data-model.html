@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change-Gate data model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f8fafc; --panel:#ffffff; --panel-border:#e2e8f0; --text:#0f172a; --muted:#64748b; --faint:#94a3b8;
+  --db-stroke:#7c3aed; --db-head:#ede9fe; --sec-stroke:#e11d48; --sec-head:#ffe4e6;
+  --box:#ffffff; --pk:#7c3aed; --fk:#0891b2; --rel:#64748b; --note-fill:#f8fafc; --grid:#eef2f7;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#020617; --panel:#0b1220; --panel-border:#1e293b; --text:#f1f5f9; --muted:#94a3b8; --faint:#64748b; --db-stroke:#a78bfa; --db-head:#2e1065; --sec-stroke:#fb7185; --sec-head:#4c0519; --box:#0f172a; --pk:#c4b5fd; --fk:#67e8f9; --rel:#94a3b8; --note-fill:#111827; --grid:#0f1a2b; } }
+:root[data-theme="dark"] { --bg:#020617; --panel:#0b1220; --panel-border:#1e293b; --text:#f1f5f9; --muted:#94a3b8; --faint:#64748b; --db-stroke:#a78bfa; --db-head:#2e1065; --sec-stroke:#fb7185; --sec-head:#4c0519; --box:#0f172a; --pk:#c4b5fd; --fk:#67e8f9; --rel:#94a3b8; --note-fill:#111827; --grid:#0f1a2b; }
+* { box-sizing:border-box; }
+html,body { margin:0; background:var(--bg); color:var(--text); font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+header { display:flex; align-items:center; justify-content:space-between; padding:28px 60px 12px; gap:16px; max-width:1900px; margin:0 auto; }
+h1 { font-size:24px; margin:0; display:flex; align-items:center; gap:12px; }
+h1::before { content:""; width:12px; height:12px; border-radius:50%; background:#0891b2; }
+button { font:inherit; font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--panel-border); background:var(--panel); color:var(--text); cursor:pointer; }
+main { padding:8px 60px 32px; max-width:1900px; margin:0 auto; }
+.panel { background:var(--panel); border:1px solid var(--panel-border); border-radius:14px; padding:16px;
+  background-image:linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size:28px 28px; }
+svg { width:100%; height:auto; max-height:calc(100vh - 160px); display:block; margin:0 auto; }
+.box { fill:var(--box); stroke:var(--db-stroke); stroke-width:1.6; }
+.head { fill:var(--db-head); }
+.sep { stroke:var(--db-stroke); stroke-width:1; }
+.sec .box { stroke:var(--sec-stroke); } .sec .head { fill:var(--sec-head); } .sec .sep { stroke:var(--sec-stroke); }
+.t-title { font-size:15px; font-weight:700; fill:var(--text); }
+.t-name { font-size:12px; fill:var(--muted); }
+.col { font-size:12.5px; fill:var(--text); }
+.col.pk { font-weight:700; }
+.typ { font-size:11.5px; fill:var(--faint); }
+.typ.pk { fill:var(--pk); font-weight:700; } .typ.fk { fill:var(--fk); font-weight:700; }
+.rel { fill:none; stroke:var(--rel); stroke-width:1.6; }
+.rel.logical { stroke-dasharray:6 5; }
+.arrowhead { fill:var(--rel); }
+.rel-label { font-size:11.5px; fill:var(--muted); paint-order:stroke; stroke:var(--panel); stroke-width:4px; }
+.note rect { fill:var(--note-fill); stroke:var(--panel-border); stroke-width:1.2; }
+.sec-note rect { stroke:var(--sec-stroke); stroke-dasharray:4 4; }
+.n-title { font-size:14px; font-weight:700; fill:var(--text); }
+.n-text { font-size:12px; fill:var(--muted); }
+.n-code { font-size:12px; fill:var(--pk); font-weight:700; }
+.n-src { font-size:11px; fill:var(--faint); }
+.lg { font-size:12.5px; fill:var(--muted); } .lg.pk { fill:var(--pk); font-weight:700; } .lg.fkc { fill:var(--fk); font-weight:700; }
+@media (max-width:700px) { header, main { padding-left:16px; padding-right:16px; } .panel { overflow-x:auto; } svg { min-width:900px; max-height:none; } }
+</style>
+</head>
+<body>
+<header><h1>Change-Gate data model</h1><button id="theme" type="button">Theme</button></header>
+<main><div class="panel"><svg viewBox="0 0 1440 940" role="img" aria-labelledby="t d" xmlns="http://www.w3.org/2000/svg">
+<title id="t">Change-Gate data model</title><desc id="d">Ten Postgres tables, all scoped by tenant_id with row-level security.</desc>
+<defs>
+<marker id="arrow-fk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrowhead"/></marker>
+<marker id="arrow-logical" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrowhead"/></marker>
+</defs>
+<g class="tbl db"><rect class="box" x="40" y="40" width="280" height="100" rx="8"/><path class="head" d="M40 48 a8 8 0 0 1 8 -8 H312 a8 8 0 0 1 8 8 V90 H40 Z"/><line class="sep" x1="40" y1="90" x2="320" y2="90"/><text class="t-title" x="54" y="62">Tenants</text><text class="t-name" x="54" y="80">tenants</text><text class="col pk" x="54" y="105">tenant_id</text><text class="typ pk" x="306" y="105" text-anchor="end">PK</text><text class="col " x="54" y="125">name</text><text class="typ " x="306" y="125" text-anchor="end">text</text></g><g class="tbl db"><rect class="box" x="400" y="40" width="280" height="200" rx="8"/><path class="head" d="M400 48 a8 8 0 0 1 8 -8 H672 a8 8 0 0 1 8 8 V90 H400 Z"/><line class="sep" x1="400" y1="90" x2="680" y2="90"/><text class="t-title" x="414" y="62">Approval policy</text><text class="t-name" x="414" y="80">policies</text><text class="col pk" x="414" y="105">tenant_id</text><text class="typ pk" x="666" y="105" text-anchor="end">PK FK</text><text class="col " x="414" y="125">env_criticality</text><text class="typ " x="666" y="125" text-anchor="end">jsonb</text><text class="col " x="414" y="145">env_authority</text><text class="typ " x="666" y="145" text-anchor="end">jsonb</text><text class="col " x="414" y="165">factor_weights</text><text class="typ " x="666" y="165" text-anchor="end">jsonb</text><text class="col " x="414" y="185">band_low_max</text><text class="typ " x="666" y="185" text-anchor="end">float</text><text class="col " x="414" y="205">band_medium_max</text><text class="typ " x="666" y="205" text-anchor="end">float</text><text class="col " x="414" y="225">auto_approve_max_band</text><text class="typ " x="666" y="225" text-anchor="end">text</text></g><g class="tbl db"><rect class="box" x="760" y="40" width="280" height="180" rx="8"/><path class="head" d="M760 48 a8 8 0 0 1 8 -8 H1032 a8 8 0 0 1 8 8 V90 H760 Z"/><line class="sep" x1="760" y1="90" x2="1040" y2="90"/><text class="t-title" x="774" y="62">Freeze windows</text><text class="t-name" x="774" y="80">freeze_windows</text><text class="col fk" x="774" y="105">tenant_id</text><text class="typ fk" x="1026" y="105" text-anchor="end">FK</text><text class="col pk" x="774" y="125">id</text><text class="typ pk" x="1026" y="125" text-anchor="end">PK</text><text class="col " x="774" y="145">name</text><text class="typ " x="1026" y="145" text-anchor="end">text</text><text class="col " x="774" y="165">start_ts / end_ts</text><text class="typ " x="1026" y="165" text-anchor="end">timestamptz</text><text class="col " x="774" y="185">environments</text><text class="typ " x="1026" y="185" text-anchor="end">text[]</text><text class="col " x="774" y="205">reason</text><text class="typ " x="1026" y="205" text-anchor="end">text</text></g><g class="tbl db"><rect class="box" x="40" y="318" width="280" height="120" rx="8"/><path class="head" d="M40 326 a8 8 0 0 1 8 -8 H312 a8 8 0 0 1 8 8 V368 H40 Z"/><line class="sep" x1="40" y1="368" x2="320" y2="368"/><text class="t-title" x="54" y="340">Service dependencies</text><text class="t-name" x="54" y="358">service_dependencies</text><text class="col fk" x="54" y="383">tenant_id</text><text class="typ fk" x="306" y="383" text-anchor="end">FK</text><text class="col pk" x="54" y="403">service_id</text><text class="typ pk" x="306" y="403" text-anchor="end">PK</text><text class="col pk" x="54" y="423">depends_on_id</text><text class="typ pk" x="306" y="423" text-anchor="end">PK</text></g><g class="tbl db"><rect class="box" x="400" y="318" width="280" height="140" rx="8"/><path class="head" d="M400 326 a8 8 0 0 1 8 -8 H672 a8 8 0 0 1 8 8 V368 H400 Z"/><line class="sep" x1="400" y1="368" x2="680" y2="368"/><text class="t-title" x="414" y="340">Services</text><text class="t-name" x="414" y="358">services</text><text class="col fk" x="414" y="383">tenant_id</text><text class="typ fk" x="666" y="383" text-anchor="end">FK</text><text class="col pk" x="414" y="403">id</text><text class="typ pk" x="666" y="403" text-anchor="end">PK</text><text class="col " x="414" y="423">name</text><text class="typ " x="666" y="423" text-anchor="end">text</text><text class="col " x="414" y="443">traffic_fraction</text><text class="typ " x="666" y="443" text-anchor="end">float</text></g><g class="tbl db"><rect class="box" x="760" y="318" width="280" height="180" rx="8"/><path class="head" d="M760 326 a8 8 0 0 1 8 -8 H1032 a8 8 0 0 1 8 8 V368 H760 Z"/><line class="sep" x1="760" y1="368" x2="1040" y2="368"/><text class="t-title" x="774" y="340">Past changes</text><text class="t-name" x="774" y="358">change_history</text><text class="col fk" x="774" y="383">tenant_id</text><text class="typ fk" x="1026" y="383" text-anchor="end">FK</text><text class="col pk" x="774" y="403">seq</text><text class="typ pk" x="1026" y="403" text-anchor="end">PK</text><text class="col " x="774" y="423">service_id</text><text class="typ " x="1026" y="423" text-anchor="end">text</text><text class="col " x="774" y="443">key, environment</text><text class="typ " x="1026" y="443" text-anchor="end">text</text><text class="col " x="774" y="463">at_ts</text><text class="typ " x="1026" y="463" text-anchor="end">timestamptz</text><text class="col " x="774" y="483">decision</text><text class="typ " x="1026" y="483" text-anchor="end">text</text></g><g class="tbl db"><rect class="box" x="1120" y="318" width="280" height="180" rx="8"/><path class="head" d="M1120 326 a8 8 0 0 1 8 -8 H1392 a8 8 0 0 1 8 8 V368 H1120 Z"/><line class="sep" x1="1120" y1="368" x2="1400" y2="368"/><text class="t-title" x="1134" y="340">Past incidents</text><text class="t-name" x="1134" y="358">incident_history</text><text class="col fk" x="1134" y="383">tenant_id</text><text class="typ fk" x="1386" y="383" text-anchor="end">FK</text><text class="col pk" x="1134" y="403">seq</text><text class="typ pk" x="1386" y="403" text-anchor="end">PK</text><text class="col " x="1134" y="423">service_id</text><text class="typ " x="1386" y="423" text-anchor="end">text</text><text class="col " x="1134" y="443">at_ts</text><text class="typ " x="1386" y="443" text-anchor="end">timestamptz</text><text class="col " x="1134" y="463">severity</text><text class="typ " x="1386" y="463" text-anchor="end">text</text><text class="col " x="1134" y="483">resolved</text><text class="typ " x="1386" y="483" text-anchor="end">bool</text></g><g class="tbl db"><rect class="box" x="40" y="576" width="280" height="160" rx="8"/><path class="head" d="M40 584 a8 8 0 0 1 8 -8 H312 a8 8 0 0 1 8 8 V626 H40 Z"/><line class="sep" x1="40" y1="626" x2="320" y2="626"/><text class="t-title" x="54" y="598">Live config values</text><text class="t-name" x="54" y="616">config_state</text><text class="col fk" x="54" y="641">tenant_id</text><text class="typ fk" x="306" y="641" text-anchor="end">FK</text><text class="col pk" x="54" y="661">key</text><text class="typ pk" x="306" y="661" text-anchor="end">PK</text><text class="col pk" x="54" y="681">environment</text><text class="typ pk" x="306" y="681" text-anchor="end">PK</text><text class="col " x="54" y="701">kind</text><text class="typ " x="306" y="701" text-anchor="end">flag | config</text><text class="col " x="54" y="721">value</text><text class="typ " x="306" y="721" text-anchor="end">jsonb</text></g><g class="tbl db"><rect class="box" x="400" y="576" width="280" height="240" rx="8"/><path class="head" d="M400 584 a8 8 0 0 1 8 -8 H672 a8 8 0 0 1 8 8 V626 H400 Z"/><line class="sep" x1="400" y1="626" x2="680" y2="626"/><text class="t-title" x="414" y="598">Change requests</text><text class="t-name" x="414" y="616">change_requests</text><text class="col fk" x="414" y="641">tenant_id</text><text class="typ fk" x="666" y="641" text-anchor="end">FK</text><text class="col pk" x="414" y="661">id</text><text class="typ pk" x="666" y="661" text-anchor="end">PK</text><text class="col " x="414" y="681">requester_id, role</text><text class="typ " x="666" y="681" text-anchor="end">text</text><text class="col " x="414" y="701">service_id</text><text class="typ " x="666" y="701" text-anchor="end">text</text><text class="col " x="414" y="721">key, environment</text><text class="typ " x="666" y="721" text-anchor="end">text</text><text class="col " x="414" y="741">kind</text><text class="typ " x="666" y="741" text-anchor="end">text</text><text class="col " x="414" y="761">current_value</text><text class="typ " x="666" y="761" text-anchor="end">jsonb</text><text class="col " x="414" y="781">proposed_value</text><text class="typ " x="666" y="781" text-anchor="end">jsonb</text><text class="col " x="414" y="801">window_start / end</text><text class="typ " x="666" y="801" text-anchor="end">timestamptz</text></g><g class="tbl sec"><rect class="box" x="760" y="576" width="280" height="300" rx="8"/><path class="head" d="M760 584 a8 8 0 0 1 8 -8 H1032 a8 8 0 0 1 8 8 V626 H760 Z"/><line class="sep" x1="760" y1="626" x2="1040" y2="626"/><text class="t-title" x="774" y="598">Audit log (hash chain)</text><text class="t-name" x="774" y="616">audit_log</text><text class="col fk" x="774" y="641">tenant_id</text><text class="typ fk" x="1026" y="641" text-anchor="end">FK</text><text class="col pk" x="774" y="661">seq</text><text class="typ pk" x="1026" y="661" text-anchor="end">PK</text><text class="col " x="774" y="681">subject, action</text><text class="typ " x="1026" y="681" text-anchor="end">text</text><text class="col " x="774" y="701">decision, risk_band</text><text class="typ " x="1026" y="701" text-anchor="end">text</text><text class="col " x="774" y="721">risk_score</text><text class="typ " x="1026" y="721" text-anchor="end">float</text><text class="col " x="774" y="741">before_val / after_val</text><text class="typ " x="1026" y="741" text-anchor="end">jsonb</text><text class="col " x="774" y="761">reason</text><text class="typ " x="1026" y="761" text-anchor="end">text</text><text class="col " x="774" y="781">risk_breakdown</text><text class="typ " x="1026" y="781" text-anchor="end">jsonb</text><text class="col " x="774" y="801">request_id, trace_id</text><text class="typ " x="1026" y="801" text-anchor="end">text</text><text class="col " x="774" y="821">ts</text><text class="typ " x="1026" y="821" text-anchor="end">timestamptz</text><text class="col " x="774" y="841">prev_hash</text><text class="typ " x="1026" y="841" text-anchor="end">text</text><text class="col " x="774" y="861">entry_hash</text><text class="typ " x="1026" y="861" text-anchor="end">text</text></g>
+<path class="rel fk" d="M400 90 H322" marker-end="url(#arrow-fk)"/><text class="rel-label" x="361" y="82" text-anchor="middle">1:1</text><path class="rel logical" d="M320 388 H398" marker-end="url(#arrow-logical)"/><path class="rel logical" d="M760 388 H682" marker-end="url(#arrow-logical)"/><path class="rel logical" d="M1260 318 V296 H580 V316" marker-end="url(#arrow-logical)"/><text class="rel-label" x="920" y="290" text-anchor="middle">service_id</text><path class="rel logical" d="M520 576 V460" marker-end="url(#arrow-logical)"/><text class="rel-label" x="528" y="552" text-anchor="start">service_id</text><path class="rel logical" d="M400 696 H322" marker-end="url(#arrow-logical)"/><text class="rel-label" x="361" y="688" text-anchor="middle">key + env</text><path class="rel logical" d="M760 786 H682" marker-end="url(#arrow-logical)"/><text class="rel-label" x="721" y="778" text-anchor="middle">request_id</text>
+
+<g class="note"><rect x="1120" y="40" width="280" height="200" rx="8"/>
+<text class="n-title" x="1136" y="66">Tenant isolation</text>
+<text class="n-text" x="1136" y="92">Every table carries tenant_id and</text>
+<text class="n-text" x="1136" y="110">the RLS policy tenant_isolation:</text>
+<text class="n-code" x="1136" y="132">tenant_id = current_tenant()</text>
+<text class="n-text" x="1136" y="156">The app role is NOBYPASSRLS and</text>
+<text class="n-text" x="1136" y="174">sets app.current_tenant in each</text>
+<text class="n-text" x="1136" y="192">transaction before any query.</text>
+<text class="n-src" x="1136" y="222">db/02_rls.sql</text></g>
+<g class="note sec-note"><rect x="1120" y="576" width="280" height="190" rx="8"/>
+<text class="n-title" x="1136" y="602">Why the audit log holds up</text>
+<text class="n-text" x="1136" y="628">entry_hash = sha256(prev_hash +</text>
+<text class="n-text" x="1136" y="646">the row). Editing an old row breaks</text>
+<text class="n-text" x="1136" y="664">every later hash.</text>
+<text class="n-text" x="1136" y="690">A trigger blocks UPDATE, DELETE.</text>
+<text class="n-text" x="1136" y="708">The app role only has INSERT.</text>
+<text class="n-src" x="1136" y="740">audit.py, db/02_rls.sql</text></g>
+
+
+<g class="legend" transform="translate(40 922)">
+<line class="rel fk" x1="0" y1="0" x2="40" y2="0"/><text class="lg" x="50" y="4">foreign key in schema</text>
+<line class="rel logical" x1="230" y1="0" x2="270" y2="0"/><text class="lg" x="280" y="4">matched by value in code (no FK constraint)</text>
+<text class="lg pk" x="700" y="4">PK</text><text class="lg" x="724" y="4">primary key part</text>
+<text class="lg fkc" x="880" y="4">FK</text><text class="lg" x="904" y="4">tenant_id, references tenants</text>
+</g>
+</svg></div></main>
+<script>
+(function(){
+  var root=document.documentElement, b=document.getElementById('theme');
+  function cur(){ var t=root.getAttribute('data-theme'); if(t) return t; return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+  function label(){ b.textContent = cur()==='dark' ? 'Light' : 'Dark'; }
+  try { var s=localStorage.getItem('cg-theme'); if(s) root.setAttribute('data-theme', s); } catch(e) {}
+  var q=new URLSearchParams(location.search).get('theme'); if(q) root.setAttribute('data-theme', q);
+  label();
+  b.addEventListener('click', function(){ var n=cur()==='dark'?'light':'dark'; root.setAttribute('data-theme', n); try{localStorage.setItem('cg-theme', n);}catch(e){} label(); });
+})();
+</script>
+</body>
+</html>
