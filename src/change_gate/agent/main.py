@@ -20,6 +20,7 @@ from ..tools import ToolService
 from .graph import run_task
 from .llm import get_explainer
 from .resilience import CallMetrics, ResilientToolClient
+from .resolving_client import ResolvingToolClient
 from .state import AgentDeps
 from .tool_client import InProcessToolClient
 
@@ -47,8 +48,11 @@ def _build_deps(args) -> AgentDeps:
         service = ToolService(repo, clock, principal=principal)
         inner = InProcessToolClient(service)
 
+    # The resolver sits under the retry layer: a call that does not match the
+    # registry is refused before it is sent, and a refusal is never retried.
     client = ResilientToolClient(
-        inner, metrics=CallMetrics(), enabled=not args.no_resilience, sleep=__import__("time").sleep
+        ResolvingToolClient(inner), metrics=CallMetrics(), enabled=not args.no_resilience,
+        sleep=__import__("time").sleep,
     )
     return AgentDeps(
         client=client,

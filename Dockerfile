@@ -13,6 +13,7 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY eval ./eval
 COPY db ./db
+COPY policy ./policy
 RUN pip install -e . --no-deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl \

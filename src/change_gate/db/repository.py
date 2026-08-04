@@ -34,6 +34,7 @@ class Repository(Protocol):
         self, key: str, env: Environment, before: object, after: object
     ) -> ConfigValue: ...
     def append_audit(self, **fields) -> AuditEntry: ...
+    def audit_entries(self, request_id: str) -> list[AuditEntry]: ...
 
 
 _REQUESTS: dict[tuple[str, str], ChangeRequest] = {
@@ -94,3 +95,6 @@ class InMemoryRepository:
         if fields["tenant_id"] != self.tenant_id:
             raise CrossTenantAccess("cannot write an audit row for another tenant")
         return self._audit.append(**fields)
+
+    def audit_entries(self, request_id: str) -> list[AuditEntry]:
+        return [e for e in self._audit.for_tenant(self.tenant_id) if e.request_id == request_id]

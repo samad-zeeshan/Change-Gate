@@ -15,6 +15,10 @@ SCOPE_APPROVE = "change:approve"
 SCOPE_APPROVE_PROD = "change:approve:prod"
 ALL_SCOPES = (SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD)
 
+PERSONA_AGENT = "agent"
+PERSONA_HUMAN = "human"
+PERSONA_UNKNOWN = "unknown"
+
 
 class AuthorizationError(PermissionError):
 
@@ -29,6 +33,12 @@ class AuthPrincipal:
     tenant_id: str
     role: str
     scopes: frozenset[str] = field(default_factory=frozenset)
+    # Principals built in-process (the CLI, the eval, tests) stand for the agent's
+    # service account unless told otherwise. A principal built from a token always
+    # sets persona from the token's signed claims, so this default never reaches
+    # a network caller.
+    persona: str = PERSONA_AGENT
+    gate_roles: frozenset[str] = field(default_factory=frozenset)
 
     def has_scope(self, scope: str) -> bool:
         return scope in self.scopes

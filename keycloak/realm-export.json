@@ -3,6 +3,34 @@
   "enabled": true,
   "accessTokenLifespan": 300,
   "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "change-approver", "description": "Demo: may approve or deny a routed change." },
+      { "name": "change-requester", "description": "Demo: may read and route changes, not decide them." }
+    ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@change-gate.example",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Approver",
+      "credentials": [{ "type": "password", "value": "alice-demo", "temporary": false }],
+      "realmRoles": ["change-approver"]
+    },
+    {
+      "username": "dev-bob",
+      "enabled": true,
+      "email": "bob@change-gate.example",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Requester",
+      "credentials": [{ "type": "password", "value": "bob-demo", "temporary": false }],
+      "realmRoles": ["change-requester"]
+    }
+  ],
   "clientScopes": [
     {
       "name": "change:read",
@@ -32,11 +60,9 @@
       "publicClient": false,
       "secret": "agent-secret",
       "serviceAccountsEnabled": true,
-      "standardFlowEnabled": true,
+      "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:9099/callback", "http://127.0.0.1:9099/callback"],
       "attributes": {
-        "pkce.code.challenge.method": "S256",
         "access.token.lifespan": "300"
       },
       "defaultClientScopes": ["change:read", "change:approve", "change:approve:prod"],
@@ -109,6 +135,56 @@
           "config": {
             "claim.name": "role",
             "claim.value": "lead",
+            "jsonType.label": "String",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "mcp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "http://localhost:9000/mcp",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "change-gate-console",
+      "name": "Change-Gate Console (human SSO, demo)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:9099/callback", "http://127.0.0.1:9099/callback"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "300"
+      },
+      "defaultClientScopes": ["change:read", "change:approve"],
+      "optionalClientScopes": ["change:approve:prod"],
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "tenant_id",
+            "claim.value": "acme",
+            "jsonType.label": "String",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "gate_roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "gate_roles",
+            "multivalued": "true",
             "jsonType.label": "String",
             "access.token.claim": "true"
           }

@@ -54,9 +54,17 @@ def _in_worker_thread() -> bool:  # pragma: no cover
     return threading.current_thread() is not threading.main_thread()
 
 
-def _parse_result(result: Any) -> dict:  # pragma: no cover
+def _parse_result(result: Any) -> dict:
+    # A tool the server refused (bad call, missing role, policy) comes back as
+    # isError. That is a real answer, so it must not look like a transport
+    # failure the resilience layer would retry.
+    if getattr(result, "isError", False):
+        texts = [getattr(b, "text", "") for b in getattr(result, "content", []) or []]
+        raise DomainToolError(" ".join(t for t in texts if t) or "tool error")
     structured = getattr(result, "structuredContent", None)
     if structured:
+        if structured.get("kind") == "tool_error":
+            raise DomainToolError(str(structured.get("error", "tool error")))
         return structured
     for block in getattr(result, "content", []) or []:
         text = getattr(block, "text", None)

@@ -15,7 +15,7 @@ import jwt
 from jwt import InvalidAudienceError, InvalidIssuerError, PyJWKClient
 from jwt.algorithms import RSAAlgorithm
 
-from ..security import AuthPrincipal
+from ..security import PERSONA_UNKNOWN, AuthPrincipal
 
 
 class AuthError(Exception):
@@ -80,9 +80,17 @@ class ResourceServerConfig:
 
 
 class TokenValidator:
-    def __init__(self, config: ResourceServerConfig, resolver: JWKSResolver) -> None:
+    def __init__(
+        self,
+        config: ResourceServerConfig,
+        resolver: JWKSResolver,
+        persona_map=None,
+    ) -> None:
         self.config = config
         self.resolver = resolver
+        # Without a persona map no token gets a persona, so it gets no roles
+        # and can call nothing that checks roles.
+        self.persona_map = persona_map
 
     def validate(self, token: str) -> AuthPrincipal:
         try:
@@ -125,11 +133,19 @@ class TokenValidator:
         if not tenant_id:
             raise InvalidToken("token missing tenant_id claim")
         role = claims.get(self.config.role_claim, "")
+        # Persona is read only after the signature, issuer and audience checks
+        # above have passed, so azp is a claim the IdP actually made.
+        if self.persona_map is not None:
+            persona, gate_roles = self.persona_map.resolve(claims)
+        else:
+            persona, gate_roles = PERSONA_UNKNOWN, frozenset()
         return AuthPrincipal(
             subject=claims.get("sub", ""),
             tenant_id=str(tenant_id),
             role=str(role),
             scopes=scopes,
+            persona=persona,
+            gate_roles=gate_roles,
         )
 
 

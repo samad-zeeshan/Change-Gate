@@ -1,0 +1,101 @@
+{
+  "version": "2026-09-25.1",
+  "personas": {
+    "agent": {
+      "clients": ["change-gate-agent", "change-gate-agent-base"],
+      "roles": ["reader", "recorder", "router"]
+    },
+    "human": {
+      "clients": ["change-gate-console"],
+      "base_roles": ["reader", "router"],
+      "role_claim": "gate_roles",
+      "role_map": {
+        "change-approver": ["approver", "recorder"],
+        "change-requester": []
+      }
+    }
+  },
+  "tools": {
+    "get_change_request": {"writes": false, "roles": ["reader"]},
+    "get_change_policy": {"writes": false, "roles": ["reader"]},
+    "get_config_state": {"writes": false, "roles": ["reader"]},
+    "get_dependency_graph": {"writes": false, "roles": ["reader"]},
+    "get_freeze_windows": {"writes": false, "roles": ["reader"]},
+    "get_recent_changes": {"writes": false, "roles": ["reader"]},
+    "validate_change_request": {"writes": false, "roles": ["reader"]},
+    "assess_change_risk": {"writes": false, "roles": ["reader"]},
+    "record_decision": {"writes": true, "roles": ["recorder"]},
+    "route_change": {"writes": true, "roles": ["router"]},
+    "approve_change": {"writes": true, "roles": ["approver"]},
+    "deny_change": {"writes": true, "roles": ["approver"]}
+  },
+  "rules": [
+    {
+      "id": "tenant-mismatch",
+      "effect": "deny",
+      "when": {"tenant_match": false},
+      "reason": "the caller's tenant is not the request's tenant"
+    },
+    {
+      "id": "unknown-persona",
+      "effect": "deny",
+      "when": {"persona": {"not_in": ["human", "agent"]}},
+      "reason": "the caller is neither a known human client nor a known agent client"
+    },
+    {
+      "id": "agent-cannot-approve",
+      "effect": "deny",
+      "when": {"persona": "agent", "action": "approve"},
+      "reason": "approving a routed change is a human decision"
+    },
+    {
+      "id": "agent-no-prod-apply",
+      "effect": "deny",
+      "when": {"persona": "agent", "action": "auto_approve", "environment": "prod"},
+      "reason": "the agent may not apply a prod change on its own"
+    },
+    {
+      "id": "invalid-request-blocks-apply",
+      "effect": "deny",
+      "when": {"action": {"in": ["auto_approve", "approve"]}, "request_valid": false},
+      "reason": "the request fails validation, so it cannot be applied"
+    },
+    {
+      "id": "freeze-blocks-apply",
+      "effect": "deny",
+      "when": {"action": {"in": ["auto_approve", "approve"]}, "freeze_active": true},
+      "reason": "a freeze window covers the change window"
+    },
+    {
+      "id": "no-self-approval",
+      "effect": "deny",
+      "when": {"action": "approve", "self_approval": true},
+      "reason": "the requester may not approve their own change"
+    },
+    {
+      "id": "record-needs-new",
+      "effect": "deny",
+      "when": {"tool": "record_decision", "state": {"not_in": ["new"]}},
+      "reason": "the request already has a decision"
+    },
+    {
+      "id": "route-needs-new",
+      "effect": "deny",
+      "when": {"tool": "route_change", "state": {"not_in": ["new"]}},
+      "reason": "only a request with no decision can be routed"
+    },
+    {
+      "id": "human-decision-needs-routed",
+      "effect": "deny",
+      "when": {"tool": {"in": ["approve_change", "deny_change"]}, "state": {"not_in": ["routed"]}},
+      "reason": "only a routed request waits for a human decision"
+    },
+    {
+      "id": "allow-known-actions",
+      "effect": "allow",
+      "when": {"action": {"in": ["auto_approve", "approve", "route", "deny"]}},
+      "reason": "no rule above blocks this action"
+    }
+  ],
+  "default": "deny"
+}

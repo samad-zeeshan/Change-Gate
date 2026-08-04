@@ -234,6 +234,28 @@ class PostgresRepository:
         return AuditEntry(**payload, prev_hash=prev_hash, entry_hash=entry_hash)
 
 
+    def audit_entries(self, request_id: str) -> list[AuditEntry]:
+        # RLS scopes this to the bound tenant, same as every other read.
+        with self._tx_cursor() as cur:
+            cur.execute(
+                "SELECT seq, subject, action, environment, decision, risk_band, risk_score, "
+                "before_val, after_val, reason, risk_breakdown, request_id, trace_id, ts, "
+                "prev_hash, entry_hash FROM audit_log WHERE request_id = %s ORDER BY seq",
+                (request_id,),
+            )
+            rows = cur.fetchall()
+        return [
+            AuditEntry(
+                seq=r[0], tenant_id=self.tenant_id, subject=r[1], action=r[2],
+                environment=r[3], decision=r[4], risk_band=r[5], risk_score=r[6],
+                before=r[7], after=r[8], reason=r[9], risk_breakdown=r[10],
+                request_id=r[11], trace_id=r[12], timestamp=r[13].isoformat(),
+                prev_hash=r[14], entry_hash=r[15],
+            )
+            for r in rows
+        ]
+
+
 def connect(dsn: str, tenant_id: str) -> PostgresRepository:
     import psycopg
 
