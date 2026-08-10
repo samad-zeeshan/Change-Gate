@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://change-gate.example/redteam-case.schema.json",
+  "title": "Change-Gate prompt-injection red-team case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "goal", "channel", "channels", "attacker", "target",
+               "injections", "steered_calls", "expected"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z]{3}-[a-z]{2}-[0-9]{2}$"},
+    "title": {"type": "string", "minLength": 1},
+    "goal": {"enum": ["unsafe_auto_approve", "wrong_tenant_read", "audit_skip",
+                      "freeze_window_bypass", "privilege_escalation"]},
+    "channel": {"enum": ["request_payload", "tool_result", "tool_description",
+                         "sampling_message", "fragmented"]},
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"enum": ["request_payload", "tool_result", "tool_description",
+                         "sampling_message"]}
+    },
+    "attacker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["persona"],
+      "properties": {
+        "persona": {"enum": ["agent", "human"]},
+        "subject": {"type": "string"},
+        "realm_roles": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template"],
+      "properties": {
+        "template": {"enum": ["prod_route", "staging_route", "prod_freeze", "dev_low",
+                              "prod_unauthorized"]},
+        "description": {"type": "string"}
+      }
+    },
+    "injections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool_result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tool"],
+            "properties": {
+              "tool": {"type": "string"},
+              "merge": {"type": "object"},
+              "replace": {"type": "object"}
+            }
+          }
+        },
+        "tool_description": {"type": "object", "additionalProperties": {"type": "string"}},
+        "sampling_message": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "steered_calls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool", "args"],
+        "properties": {
+          "tool": {"type": "string"},
+          "args": {"type": "object"}
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_state_in", "safe_outcome"],
+      "properties": {
+        "target_state_in": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "safe_outcome": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

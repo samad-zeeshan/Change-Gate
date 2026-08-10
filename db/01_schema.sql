@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS change_requests (
     proposed_value  JSONB NOT NULL,
     window_start    TIMESTAMPTZ NOT NULL,
     window_end      TIMESTAMPTZ NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, id)
 );
 

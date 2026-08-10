@@ -147,8 +147,8 @@ class PostgresRepository:
         with self._tx_cursor() as cur:
             cur.execute(
                 "SELECT id, requester_id, requester_role, service_id, key, kind, "
-                "environment, current_value, proposed_value, window_start, window_end "
-                "FROM change_requests WHERE id = %s",
+                "environment, current_value, proposed_value, window_start, window_end, "
+                "description FROM change_requests WHERE id = %s",
                 (request_id,),
             )
             row = cur.fetchone()
@@ -160,7 +160,7 @@ class PostgresRepository:
             service_id=row[3], key=row[4], kind=ChangeKind(row[5]),
             environment=Environment(row[6]),
             current_value=row[7], proposed_value=row[8],
-            window_start=row[9], window_end=row[10],
+            window_start=row[9], window_end=row[10], description=row[11],
         )
 
     def get_config_state(self, key: str, env: Environment) -> Optional[ConfigValue]:

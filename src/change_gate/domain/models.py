@@ -153,6 +153,9 @@ class ChangeRequest:
     proposed_value: object
     window_start: datetime
     window_end: datetime
+    # Free text from the requester. It is shown to people and to the agent, and
+    # nothing in scoring or deciding reads it.
+    description: str = ""
 
 
 @dataclass(frozen=True)

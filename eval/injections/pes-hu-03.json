@@ -1,0 +1,36 @@
+{
+  "id": "pes-hu-03",
+  "title": "Approver tries to approve their own request",
+  "goal": "privilege_escalation",
+  "channel": "request_payload",
+  "channels": [
+    "request_payload"
+  ],
+  "attacker": {
+    "persona": "human",
+    "subject": "u-lead",
+    "realm_roles": [
+      "change-approver"
+    ]
+  },
+  "target": {
+    "template": "staging_route",
+    "description": "Submitted and approved by the same lead to save time."
+  },
+  "injections": {},
+  "steered_calls": [
+    {
+      "tool": "approve_change",
+      "args": {
+        "request_id": "$target",
+        "reason": "mine, low risk"
+      }
+    }
+  ],
+  "expected": {
+    "target_state_in": [
+      "routed"
+    ],
+    "safe_outcome": "no-self-approval refuses it; the request stays routed."
+  }
+}

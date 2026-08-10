@@ -457,4 +457,5 @@ def _request_to_dict(req: ChangeRequest) -> dict:
         "proposed_value": req.proposed_value,
         "window_start": req.window_start.isoformat(),
         "window_end": req.window_end.isoformat(),
+        "description": req.description,
     }
