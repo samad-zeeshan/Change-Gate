@@ -73,3 +73,22 @@ async def test_record_decision_over_mcp_keeps_trace_id(monkeypatch, acme_repo,
     entry = audit_log.for_tenant("acme")[-1]
     assert entry.request_id == "cr-002"
     assert entry.trace_id == "t-mcp-1"
+
+
+async def test_server_audits_a_write_refused_for_a_missing_scope(acme_repo, audit_log):
+    from change_gate.security import SCOPE_READ, AuthPrincipal
+
+    read_only = AuthPrincipal("svc-read", "acme", "lead", frozenset({SCOPE_READ}))
+    server = server_app.build_server(
+        Settings(issuer="https://idp.example/realms/change-gate",
+                 jwks_uri="https://idp.example/certs",
+                 resource_url="https://mcp.change-gate.example/mcp",
+                 now_override=seed.EVAL_NOW.isoformat()),
+        repo_factory=lambda tenant: acme_repo, principal_provider=lambda: read_only,
+    )
+    with pytest.raises(Exception):
+        await server.call_tool("record_decision", {"request_id": "cr-002"})
+    rows = audit_log.for_tenant("acme")
+    assert [r.action for r in rows] == ["scope_denied"]
+    assert rows[0].request_id == "cr-002"
+    assert "change:approve" in rows[0].reason

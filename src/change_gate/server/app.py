@@ -213,36 +213,41 @@ def build_server(
                     request_id, now=_now(), trace_id=trace_id, explanation=explanation,
                     force_route=force_route,
                 ),
-                require=(SCOPE_APPROVE,),
+                require=(SCOPE_APPROVE,), request_id=request_id,
             )
 
     @tool("route_change")
     def route_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
         return _wrap(
             lambda s: s.route_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,),
+            require=(SCOPE_APPROVE,), request_id=request_id,
         )
 
     @tool("approve_change")
     def approve_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
         return _wrap(
             lambda s: s.approve_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,),
+            require=(SCOPE_APPROVE,), request_id=request_id,
         )
 
     @tool("deny_change")
     def deny_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
         return _wrap(
             lambda s: s.deny_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,),
+            require=(SCOPE_APPROVE,), request_id=request_id,
         )
 
-    def _wrap(run, require: tuple[str, ...] = ()) -> dict:
+    def _wrap(run, require: tuple[str, ...] = (), request_id: str = "") -> dict:
         principal = _principal()
+        service = ToolService(_repo(principal.tenant_id), clock, principal=principal)
         for scope in require:
             if not principal.has_scope(scope):
-                raise AuthorizationError(f"missing required scope: {scope}")
-        service = ToolService(_repo(principal.tenant_id), clock, principal=principal)
+                # Refused before ToolService runs, so it is audited here. Without
+                # this, a write refused for scope would leave no trace.
+                msg = f"missing required scope: {scope}"
+                ToolBoundary(service, persona_map).audit_refusal(
+                    "scope_denied", {"request_id": request_id}, msg)
+                raise AuthorizationError(msg)
         try:
             return run(service)
         except ToolError as exc:

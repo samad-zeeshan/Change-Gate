@@ -30,13 +30,13 @@ class ToolBoundary:
         try:
             spec = resolve_call(tool, args)
         except RejectedCall as exc:
-            self._audit("tool_call_rejected", args, str(exc))
+            self.audit_refusal("tool_call_rejected", args, str(exc))
             raise
         principal = self.service.principal
         if principal is None or not self.persona_map.may_call(principal, spec.name):
             persona = principal.persona if principal else "none"
             msg = f"persona {persona!r} holds no role that may call {spec.name}"
-            self._audit("tool_denied", args, msg)
+            self.audit_refusal("tool_denied", args, msg)
             raise ToolDenied(msg)
         return spec
 
@@ -46,7 +46,7 @@ class ToolBoundary:
         # already limited args to the declared keyword arguments.
         return getattr(self.service, spec.name)(**args)
 
-    def _audit(self, action: str, args: object, reason: str) -> None:
+    def audit_refusal(self, action: str, args: object, reason: str) -> None:
         svc = self.service
         fields = args if isinstance(args, dict) else {}
         request_id = fields.get("request_id")

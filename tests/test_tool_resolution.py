@@ -279,3 +279,25 @@ def test_mcp_client_reads_a_server_rejection_as_a_domain_error():
     with pytest.raises(DomainToolError):
         _parse_result(_Result("", structured={"error": "not found", "kind": "tool_error"}))
     assert _parse_result(_Result("", structured={"ok": True})) == {"ok": True}
+
+
+def test_mcp_client_reads_a_tool_error_sent_as_json_text():
+    from change_gate.agent.mcp_client import _parse_result
+
+    # FastMCP sends a plain dict return as JSON text with no structured content.
+    with pytest.raises(DomainToolError) as exc:
+        _parse_result(_Result('{"error": "change request \'gx-900\' not found", '
+                              '"kind": "tool_error"}'))
+    assert "not found" in str(exc.value)
+    assert _parse_result(_Result('{"decision": "route"}')) == {"decision": "route"}
+
+
+def test_mcp_client_unwraps_a_single_error_from_a_task_group():
+    from change_gate.agent.mcp_client import _unwrap
+
+    inner = DomainToolError("policy 2026-09-25.1 rule agent-cannot-approve: no")
+    assert _unwrap(BaseExceptionGroup("tg", [inner])) is inner
+    nested = BaseExceptionGroup("outer", [BaseExceptionGroup("inner", [inner])])
+    assert _unwrap(nested) is inner
+    many = BaseExceptionGroup("tg", [inner, ValueError("x")])
+    assert _unwrap(many) is many
