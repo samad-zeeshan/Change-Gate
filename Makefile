@@ -1,12 +1,13 @@
 PY ?= python
 
-.PHONY: help install test test-postgres eval seed-sql agent up down logs lint
+.PHONY: help install test test-postgres eval redteam seed-sql agent up down logs lint
 
 help:
 	@echo "install        install the package + dev deps (editable)"
 	@echo "test           run the offline test suite (no docker)"
 	@echo "test-postgres  run the full suite incl. Postgres RLS isolation (needs DSNs)"
 	@echo "eval           run the reliability eval -> eval/report.md + chart"
+	@echo "redteam        run the prompt-injection corpus -> eval/redteam-results.json + report"
 	@echo "seed-sql       regenerate db/03_seed.sql from the Python seed"
 	@echo "agent REQ=cr-002   run the agent in-process for one request"
 	@echo "up / down      docker compose up --build / down -v"
@@ -23,6 +24,9 @@ test-postgres:
 
 eval:
 	$(PY) -m eval.run_eval --n 120 --seed 1234
+
+redteam:
+	$(PY) -m eval.run_redteam
 
 seed-sql:
 	$(PY) db/generate_seed_sql.py

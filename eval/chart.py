@@ -99,3 +99,64 @@ def try_write_png(
     fig.savefig(path, dpi=120)
     plt.close(fig)
     return True
+
+
+def write_redteam_svg(path: Path, data: dict) -> None:
+    # Attack success rate per attacker goal, one bar per run. Same hand-written
+    # SVG approach as write_svg so the chart needs no plotting library.
+    runs = list(data["runs"])
+    colors = {"http": "#16a34a", "inprocess": "#2563eb", "ablation": "#dc2626"}
+    labels = {"http": "Hardened (MCP/HTTP)", "inprocess": "Hardened (in-process)",
+              "ablation": "Ablation (new layers off)"}
+    goals = list(data["corpus"]["by_goal"])
+    W, H = 760, 460
+    ml, mr, mt, mb = 70, 30, 80, 70
+    pw, ph = W - ml - mr, H - mt - mb
+    group = pw / max(1, len(goals))
+    bar = group * 0.8 / max(1, len(runs))
+
+    def y_of(rate: float) -> float:
+        return mt + ph * (1.0 - rate)
+
+    parts = []
+    for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+        y = y_of(frac)
+        parts.append(f'<line x1="{ml}" y1="{y}" x2="{ml+pw}" y2="{y}" stroke="#e2e8f0"/>')
+        parts.append(f'<text x="{ml-10}" y="{y+4}" text-anchor="end" font-size="12" '
+                     f'fill="#475569">{int(frac*100)}%</text>')
+    for gi, goal in enumerate(goals):
+        x0 = ml + gi * group + group * 0.1
+        for ri, run in enumerate(runs):
+            g = data["runs"][run]["summary"]["by_goal"][goal]
+            rate = g["attack_successes"] / g["cases"] if g["cases"] else 0.0
+            x = x0 + ri * bar
+            y = y_of(rate)
+            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar-2:.1f}" '
+                         f'height="{mt+ph-y:.1f}" fill="{colors.get(run, "#64748b")}"/>')
+            parts.append(f'<text x="{x+bar/2-1:.1f}" y="{y-4:.1f}" text-anchor="middle" '
+                         f'font-size="10" fill="#0f172a">{g["attack_successes"]}/{g["cases"]}'
+                         f'</text>')
+        parts.append(f'<text x="{ml+gi*group+group/2:.1f}" y="{mt+ph+20}" '
+                     f'text-anchor="middle" font-size="11" fill="#475569">'
+                     f'{goal.replace("_", " ")}</text>')
+    for ri, run in enumerate(runs):
+        y = 42 + ri * 0
+        x = ml + ri * 230
+        parts.append(f'<rect x="{x}" y="{y}" width="14" height="14" '
+                     f'fill="{colors.get(run, "#64748b")}"/>')
+        parts.append(f'<text x="{x+20}" y="{y+12}" font-size="12" fill="#0f172a">'
+                     f'{labels.get(run, run)}</text>')
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"
+     viewBox="0 0 {W} {H}" font-family="Segoe UI, sans-serif">
+  <rect width="{W}" height="{H}" fill="white"/>
+  <text x="{W/2}" y="26" text-anchor="middle" font-size="18" font-weight="700"
+        fill="#0f172a">Prompt-injection attack success by goal</text>
+  {''.join(parts)}
+  <text x="18" y="{mt+ph/2}" text-anchor="middle" font-size="13" fill="#0f172a"
+        transform="rotate(-90 18 {mt+ph/2})">Attack success rate</text>
+  <text x="{ml+pw/2}" y="{H-14}" text-anchor="middle" font-size="13"
+        fill="#0f172a">Attacker goal ({data['corpus']['cases']} cases)</text>
+</svg>
+"""
+    path.write_text(svg, encoding="utf-8")

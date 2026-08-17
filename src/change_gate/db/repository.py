@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import replace
-from typing import Optional, Protocol, runtime_checkable
+from typing import Iterable, Optional, Protocol, runtime_checkable
 
 from ..audit import AuditEntry, AuditLog
 from ..data import seed
@@ -48,10 +48,16 @@ class InMemoryRepository:
         self,
         tenant_id: str,
         audit_log: Optional[AuditLog] = None,
+        requests: Optional[Iterable[ChangeRequest]] = None,
     ) -> None:
         if tenant_id not in seed.TENANTS:
             raise TenantNotFound(tenant_id)
         self.tenant_id = tenant_id
+        # Extra requests (any tenant) sit beside the seed ones. The eval uses this
+        # to add a case's target and another tenant's request to aim at.
+        self._requests = dict(_REQUESTS)
+        for req in requests or ():
+            self._requests[(req.tenant_id, req.id)] = req
         self._audit = audit_log if audit_log is not None else AuditLog()
         base = seed.TENANTS[tenant_id]
         self._config: dict[tuple[str, Environment], ConfigValue] = {
@@ -67,7 +73,7 @@ class InMemoryRepository:
         return replace(base, config=dict(self._config))
 
     def get_change_request(self, request_id: str) -> Optional[ChangeRequest]:
-        for (tid, rid), req in _REQUESTS.items():
+        for (tid, rid), req in self._requests.items():
             if rid == request_id:
                 if tid != self.tenant_id:
                     raise CrossTenantAccess(

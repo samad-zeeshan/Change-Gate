@@ -32,6 +32,21 @@ def test_inmemory_sandboxes_are_independent():
     assert b.get_config_state("beta_banner", Environment.DEV).value is False
 
 
+def test_inmemory_extra_requests_keep_tenant_isolation():
+    import dataclasses
+
+    from change_gate.data import seed
+
+    foreign = dataclasses.replace(seed.SCENARIOS[0].request, id="gx-1", tenant_id="globex")
+    acme = InMemoryRepository("acme", requests=[foreign])
+    globex = InMemoryRepository("globex", requests=[foreign])
+    assert globex.get_change_request("gx-1") is foreign
+    with pytest.raises(CrossTenantAccess):
+        acme.get_change_request("gx-1")
+    assert acme.get_change_request("cr-001") is not None
+    assert InMemoryRepository("acme").get_change_request("gx-1") is None
+
+
 APP_DSN = os.getenv("CHANGE_GATE_PG_DSN")
 ADMIN_DSN = os.getenv("CHANGE_GATE_PG_ADMIN_DSN")
 pg = pytest.mark.skipif(not APP_DSN, reason="CHANGE_GATE_PG_DSN not set")
