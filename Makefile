@@ -6,8 +6,8 @@ help:
 	@echo "install        install the package + dev deps (editable)"
 	@echo "test           run the offline test suite (no docker)"
 	@echo "test-postgres  run the full suite incl. Postgres RLS isolation (needs DSNs)"
-	@echo "eval           run the reliability eval -> eval/report.md + chart"
-	@echo "redteam        run the prompt-injection corpus -> eval/redteam-results.json + report"
+	@echo "eval           run the reliability eval -> eval/results.json + chart"
+	@echo "redteam        run the prompt-injection corpus -> eval/redteam-results.json + chart"
 	@echo "seed-sql       regenerate db/03_seed.sql from the Python seed"
 	@echo "agent REQ=cr-002   run the agent in-process for one request"
 	@echo "up / down      docker compose up --build / down -v"
@@ -33,7 +33,7 @@ seed-sql:
 
 REQ ?= cr-002
 agent:
-	$(PY) -m change_gate.agent.main $(REQ)
+	$(PY) -m warden.agent.main $(REQ)
 
 up:
 	docker compose up --build

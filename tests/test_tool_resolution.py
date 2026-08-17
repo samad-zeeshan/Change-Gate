@@ -3,34 +3,34 @@ from __future__ import annotations
 
 import pytest
 
-from change_gate.agent.graph import run_task
-from change_gate.agent.llm import DeterministicExplainer
-from change_gate.agent.resilience import CallMetrics, DomainToolError, ResilientToolClient
-from change_gate.agent.resolving_client import HallucinationStats, ResolvingToolClient
-from change_gate.agent.state import AgentDeps
-from change_gate.agent.tool_client import InProcessToolClient
-from change_gate.config import Settings
-from change_gate.data import seed
-from change_gate.policy import load_policy_document
-from change_gate.security import PERSONA_HUMAN, PERSONA_UNKNOWN, AuthPrincipal
-from change_gate.server import app as server_app
-from change_gate.tool_registry import (
+from warden.agent.graph import run_task
+from warden.agent.llm import DeterministicExplainer
+from warden.agent.resilience import CallMetrics, DomainToolError, ResilientToolClient
+from warden.agent.resolving_client import HallucinationStats, ResolvingToolClient
+from warden.agent.state import AgentDeps
+from warden.agent.tool_client import InProcessToolClient
+from warden.config import Settings
+from warden.data import seed
+from warden.policy import load_policy_document
+from warden.security import PERSONA_HUMAN, PERSONA_UNKNOWN, AuthPrincipal
+from warden.server import app as server_app
+from warden.tool_registry import (
     REGISTRY,
     REJECT_KINDS,
     RejectedCall,
     diff_advertised,
     resolve_call,
 )
-from change_gate.tools import ToolService
+from warden.tools import ToolService
 
 _JSON_TYPE = {"string": "string", "boolean": "boolean"}
 
 
 def _cfg() -> Settings:
     return Settings(
-        issuer="https://idp.example/realms/change-gate",
-        jwks_uri="https://idp.example/realms/change-gate/protocol/openid-connect/certs",
-        resource_url="https://mcp.change-gate.example/mcp",
+        issuer="https://idp.example/realms/warden",
+        jwks_uri="https://idp.example/realms/warden/protocol/openid-connect/certs",
+        resource_url="https://mcp.warden.example/mcp",
         now_override=seed.EVAL_NOW.isoformat(),
     )
 
@@ -268,7 +268,7 @@ class _Result:
 
 
 def test_mcp_client_reads_a_server_rejection_as_a_domain_error():
-    from change_gate.agent.mcp_client import _parse_result
+    from warden.agent.mcp_client import _parse_result
 
     # A rejection is an answer, not a glitch. Read as a malformed payload it
     # would be retried four times and then look like an outage.
@@ -282,7 +282,7 @@ def test_mcp_client_reads_a_server_rejection_as_a_domain_error():
 
 
 def test_mcp_client_reads_a_tool_error_sent_as_json_text():
-    from change_gate.agent.mcp_client import _parse_result
+    from warden.agent.mcp_client import _parse_result
 
     # FastMCP sends a plain dict return as JSON text with no structured content.
     with pytest.raises(DomainToolError) as exc:
@@ -293,7 +293,7 @@ def test_mcp_client_reads_a_tool_error_sent_as_json_text():
 
 
 def test_mcp_client_unwraps_a_single_error_from_a_task_group():
-    from change_gate.agent.mcp_client import _unwrap
+    from warden.agent.mcp_client import _unwrap
 
     inner = DomainToolError("policy 2026-09-25.1 rule agent-cannot-approve: no")
     assert _unwrap(BaseExceptionGroup("tg", [inner])) is inner

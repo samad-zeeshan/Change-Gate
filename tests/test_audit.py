@@ -5,12 +5,12 @@ import dataclasses
 
 import pytest
 
-from change_gate.audit import AuditLog
-from change_gate.clock import FixedClock
-from change_gate.data import seed
-from change_gate.db.repository import InMemoryRepository
-from change_gate.security import SCOPE_APPROVE, SCOPE_READ, AuthPrincipal, AuthorizationError
-from change_gate.tools import ToolService
+from warden.audit import AuditLog
+from warden.clock import FixedClock
+from warden.data import seed
+from warden.db.repository import InMemoryRepository
+from warden.security import SCOPE_APPROVE, SCOPE_READ, AuthPrincipal, AuthorizationError
+from warden.tools import ToolService
 
 
 def _service(scopes, audit_log):
@@ -53,8 +53,8 @@ def test_unauthorized_prod_approval_blocked_and_logged():
 
 
 def test_prod_auto_approve_requires_elevated_scope():
-    from change_gate.domain.models import Decision, Environment
-    from change_gate.security import authorize_write
+    from warden.domain.models import Decision, Environment
+    from warden.security import authorize_write
 
     base = AuthPrincipal("a", "acme", "lead", frozenset({SCOPE_READ, SCOPE_APPROVE}))
     with pytest.raises(AuthorizationError):

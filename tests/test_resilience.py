@@ -5,7 +5,7 @@ import random
 
 import pytest
 
-from change_gate.agent.resilience import (
+from warden.agent.resilience import (
     CallMetrics,
     DomainToolError,
     ResilientToolClient,

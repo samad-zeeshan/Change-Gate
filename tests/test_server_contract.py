@@ -3,21 +3,21 @@ from __future__ import annotations
 
 import pytest
 
-from change_gate.agent.graph import run_task
-from change_gate.agent.llm import DeterministicExplainer
-from change_gate.agent.resilience import CallMetrics, ResilientToolClient
-from change_gate.agent.state import AgentDeps
-from change_gate.agent.tool_client import InProcessToolClient
-from change_gate.config import Settings
-from change_gate.data import seed
-from change_gate.server import app as server_app
+from warden.agent.graph import run_task
+from warden.agent.llm import DeterministicExplainer
+from warden.agent.resilience import CallMetrics, ResilientToolClient
+from warden.agent.state import AgentDeps
+from warden.agent.tool_client import InProcessToolClient
+from warden.config import Settings
+from warden.data import seed
+from warden.server import app as server_app
 
 
 def _server():
     cfg = Settings(
-        issuer="https://idp.example/realms/change-gate",
-        jwks_uri="https://idp.example/realms/change-gate/protocol/openid-connect/certs",
-        resource_url="https://mcp.change-gate.example/mcp",
+        issuer="https://idp.example/realms/warden",
+        jwks_uri="https://idp.example/realms/warden/protocol/openid-connect/certs",
+        resource_url="https://mcp.warden.example/mcp",
         now_override=seed.EVAL_NOW.isoformat(),
     )
     return server_app.build_server(cfg)
@@ -76,13 +76,13 @@ async def test_record_decision_over_mcp_keeps_trace_id(monkeypatch, acme_repo,
 
 
 async def test_server_audits_a_write_refused_for_a_missing_scope(acme_repo, audit_log):
-    from change_gate.security import SCOPE_READ, AuthPrincipal
+    from warden.security import SCOPE_READ, AuthPrincipal
 
     read_only = AuthPrincipal("svc-read", "acme", "lead", frozenset({SCOPE_READ}))
     server = server_app.build_server(
-        Settings(issuer="https://idp.example/realms/change-gate",
+        Settings(issuer="https://idp.example/realms/warden",
                  jwks_uri="https://idp.example/certs",
-                 resource_url="https://mcp.change-gate.example/mcp",
+                 resource_url="https://mcp.warden.example/mcp",
                  now_override=seed.EVAL_NOW.isoformat()),
         repo_factory=lambda tenant: acme_repo, principal_provider=lambda: read_only,
     )

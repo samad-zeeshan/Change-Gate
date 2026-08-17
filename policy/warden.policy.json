@@ -2,11 +2,11 @@
   "version": "2026-09-25.1",
   "personas": {
     "agent": {
-      "clients": ["change-gate-agent", "change-gate-agent-base"],
+      "clients": ["warden-agent", "warden-agent-base"],
       "roles": ["reader", "recorder", "router"]
     },
     "human": {
-      "clients": ["change-gate-console"],
+      "clients": ["warden-console"],
       "base_roles": ["reader", "router"],
       "role_claim": "gate_roles",
       "role_map": {

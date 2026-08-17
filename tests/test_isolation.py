@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from change_gate.db.repository import CrossTenantAccess, InMemoryRepository
+from warden.db.repository import CrossTenantAccess, InMemoryRepository
 
 
 def test_inmemory_cross_tenant_read_denied():
@@ -26,7 +26,7 @@ def test_inmemory_cross_tenant_audit_write_denied():
 def test_inmemory_sandboxes_are_independent():
     a = InMemoryRepository("acme")
     b = InMemoryRepository("acme")
-    from change_gate.domain.models import Environment
+    from warden.domain.models import Environment
 
     a.apply_config_change("beta_banner", Environment.DEV, False, True)
     assert b.get_config_state("beta_banner", Environment.DEV).value is False
@@ -35,7 +35,7 @@ def test_inmemory_sandboxes_are_independent():
 def test_inmemory_extra_requests_keep_tenant_isolation():
     import dataclasses
 
-    from change_gate.data import seed
+    from warden.data import seed
 
     foreign = dataclasses.replace(seed.SCENARIOS[0].request, id="gx-1", tenant_id="globex")
     acme = InMemoryRepository("acme", requests=[foreign])
@@ -47,15 +47,15 @@ def test_inmemory_extra_requests_keep_tenant_isolation():
     assert InMemoryRepository("acme").get_change_request("gx-1") is None
 
 
-APP_DSN = os.getenv("CHANGE_GATE_PG_DSN")
-ADMIN_DSN = os.getenv("CHANGE_GATE_PG_ADMIN_DSN")
-pg = pytest.mark.skipif(not APP_DSN, reason="CHANGE_GATE_PG_DSN not set")
+APP_DSN = os.getenv("WARDEN_PG_DSN")
+ADMIN_DSN = os.getenv("WARDEN_PG_ADMIN_DSN")
+pg = pytest.mark.skipif(not APP_DSN, reason="WARDEN_PG_DSN not set")
 
 
 @pg
 @pytest.mark.postgres
 def test_rls_scopes_reads_to_the_bound_tenant():
-    from change_gate.db.postgres_repository import connect
+    from warden.db.postgres_repository import connect
 
     acme = connect(APP_DSN, "acme")
     globex = connect(APP_DSN, "globex")
@@ -87,7 +87,7 @@ def test_rls_blocks_cross_tenant_write():
     conn.rollback()
 
 
-@pytest.mark.skipif(not ADMIN_DSN, reason="CHANGE_GATE_PG_ADMIN_DSN not set")
+@pytest.mark.skipif(not ADMIN_DSN, reason="WARDEN_PG_ADMIN_DSN not set")
 @pytest.mark.postgres
 def test_control_isolation_fails_without_rls_then_restore():
     import psycopg
@@ -98,7 +98,7 @@ def test_control_isolation_fails_without_rls_then_restore():
             cur.execute("ALTER TABLE services DISABLE ROW LEVEL SECURITY")
         admin.commit()
 
-        from change_gate.db.postgres_repository import connect
+        from warden.db.postgres_repository import connect
 
         acme = connect(APP_DSN, "acme")
         leaked = set(acme.get_tenant_context().graph.services)

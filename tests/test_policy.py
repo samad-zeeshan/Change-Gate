@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from change_gate.policy import (
+from warden.policy import (
     ActionPolicy,
     ProposedAction,
     load_action_policy,

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from change_gate.personas import load_persona_map
+from warden.personas import load_persona_map
 from eval.redteam import World, load_cases
 from eval.redteam_llm import build_messages, is_benign, parse_calls, run_llm_case, summarise_llm
 

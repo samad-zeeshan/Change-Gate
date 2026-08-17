@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from change_gate.agent.graph import run_task
-from change_gate.agent.llm import DeterministicExplainer
-from change_gate.agent.resilience import CallMetrics, ResilientToolClient
-from change_gate.agent.state import AgentDeps
-from change_gate.agent.tool_client import InProcessToolClient
-from change_gate.data import seed
+from warden.agent.graph import run_task
+from warden.agent.llm import DeterministicExplainer
+from warden.agent.resilience import CallMetrics, ResilientToolClient
+from warden.agent.state import AgentDeps
+from warden.agent.tool_client import InProcessToolClient
+from warden.data import seed
 
 
 def _deps(service) -> AgentDeps:

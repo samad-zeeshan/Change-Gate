@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from change_gate.data import seed
-from change_gate.domain.models import (
+from warden.data import seed
+from warden.domain.models import (
     ChangeKind,
     ChangeRequest,
     DependencyGraph,
@@ -17,7 +17,7 @@ from change_gate.domain.models import (
     Role,
     Service,
 )
-from change_gate.domain.risk import assess_risk, band_for
+from warden.domain.risk import assess_risk, band_for
 
 NOW = seed.EVAL_NOW
 POLICY = seed.ACME_CONTEXT.policy

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from change_gate.data import seed
-from change_gate.domain import risk
-from change_gate.domain.models import (
+from warden.data import seed
+from warden.domain import risk
+from warden.domain.models import (
     ChangeKind,
     ChangeRequest,
     Environment,

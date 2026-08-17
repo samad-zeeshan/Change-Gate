@@ -5,13 +5,13 @@ import dataclasses
 
 import pytest
 
-from change_gate.audit import AuditLog
-from change_gate.clock import FixedClock
-from change_gate.data import seed
-from change_gate.db.repository import InMemoryRepository
-from change_gate.domain.models import Environment, RiskBand
-from change_gate.policy import PolicyDenied
-from change_gate.security import (
+from warden.audit import AuditLog
+from warden.clock import FixedClock
+from warden.data import seed
+from warden.db.repository import InMemoryRepository
+from warden.domain.models import Environment, RiskBand
+from warden.policy import PolicyDenied
+from warden.security import (
     PERSONA_HUMAN,
     PERSONA_UNKNOWN,
     SCOPE_APPROVE,
@@ -19,7 +19,7 @@ from change_gate.security import (
     SCOPE_READ,
     AuthPrincipal,
 )
-from change_gate.tools import ToolService
+from warden.tools import ToolService
 
 ALL = frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD})
 
@@ -211,7 +211,7 @@ def test_every_denial_is_one_audit_entry_and_the_chain_verifies(agent, human, re
 
 
 def test_policy_denials_name_the_policy_version(agent, audit_log):
-    from change_gate.policy import load_policy_document
+    from warden.policy import load_policy_document
 
     with pytest.raises(PolicyDenied):
         agent.approve_change("cr-002")

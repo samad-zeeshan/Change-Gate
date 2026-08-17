@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://change-gate.example/redteam-case.schema.json",
-  "title": "Change-Gate prompt-injection red-team case",
+  "$id": "https://warden.example/redteam-case.schema.json",
+  "title": "Warden prompt-injection red-team case",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "title", "goal", "channel", "channels", "attacker", "target",

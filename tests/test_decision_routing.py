@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from change_gate.data import seed
-from change_gate.domain.models import Decision
+from warden.data import seed
+from warden.domain.models import Decision
 
 
 @pytest.mark.parametrize("scenario", seed.SCENARIOS, ids=lambda s: s.name)

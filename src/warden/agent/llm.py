@@ -40,7 +40,7 @@ class DeterministicExplainer:
 
     def draft_routing_message(self, breakdown: dict, request: dict, decision: dict) -> str:
         return (
-            f"[change-gate] {decision['decision'].upper()} — {request['key']} in "
+            f"[warden] {decision['decision'].upper()} — {request['key']} in "
             f"{request['environment']} (service {request['service_id']}). "
             f"Risk {breakdown['score']}/{breakdown['band']}. "
             f"Reason: {'; '.join(decision.get('reasons', []))}. "
@@ -54,7 +54,7 @@ class AnthropicExplainer:
         import anthropic
 
         self._client = anthropic.Anthropic()
-        self._model = model or os.getenv("CHANGE_GATE_LLM_MODEL", "claude-haiku-4-5-20251001")
+        self._model = model or os.getenv("WARDEN_LLM_MODEL", "claude-haiku-4-5-20251001")
         self._fallback = DeterministicExplainer()
 
     def _complete(self, system: str, user: str, fallback: str) -> str:
@@ -88,7 +88,7 @@ class AnthropicExplainer:
 
 
 def get_explainer() -> Explainer:
-    if os.getenv("CHANGE_GATE_USE_LLM") == "1" and os.getenv("ANTHROPIC_API_KEY"):
+    if os.getenv("WARDEN_USE_LLM") == "1" and os.getenv("ANTHROPIC_API_KEY"):
         try:
             return AnthropicExplainer()
         except Exception:  # noqa: BLE001

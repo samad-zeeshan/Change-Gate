@@ -1,27 +1,27 @@
 -- Row level security for tenant isolation and an append-only audit log.
--- The app connects as change_gate_app, which deliberately cannot bypass RLS.
+-- The app connects as warden_app, which deliberately cannot bypass RLS.
 
 -- NOBYPASSRLS is the whole point. If the app role could bypass RLS, a bug in a
 -- WHERE clause would leak across tenants. The policies below become the backstop.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'change_gate_app') THEN
-        CREATE ROLE change_gate_app LOGIN PASSWORD 'app_password'
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'warden_app') THEN
+        CREATE ROLE warden_app LOGIN PASSWORD 'app_password'
             NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
     END IF;
 END$$;
 
-ALTER ROLE change_gate_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+ALTER ROLE warden_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 
-GRANT USAGE ON SCHEMA public TO change_gate_app;
+GRANT USAGE ON SCHEMA public TO warden_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     tenants, policies, services, service_dependencies, config_state,
     freeze_windows, change_history, incident_history, change_requests
-TO change_gate_app;
+TO warden_app;
 
-GRANT SELECT, INSERT ON audit_log TO change_gate_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO change_gate_app;
+GRANT SELECT, INSERT ON audit_log TO warden_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO warden_app;
 
 -- Reads the tenant the app set for this connection via set_config. The second
 -- arg (true) makes it return NULL instead of erroring when unset, which means an

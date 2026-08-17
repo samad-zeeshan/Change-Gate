@@ -145,7 +145,7 @@ def build_server(
             return False
 
     mcp = GatedFastMCP(
-        name="change-gate",
+        name="warden",
         instructions="Multi-tenant config-change / feature-flag approval gate.",
         host=cfg.host,
         port=cfg.port,

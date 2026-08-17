@@ -26,52 +26,52 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from change_gate.agent.graph import run_task  # noqa: E402
-from change_gate.agent.llm import DeterministicExplainer  # noqa: E402
-from change_gate.agent.resilience import (  # noqa: E402
+from warden.agent.graph import run_task  # noqa: E402
+from warden.agent.llm import DeterministicExplainer  # noqa: E402
+from warden.agent.resilience import (  # noqa: E402
     CallMetrics,
     DomainToolError,
     ResilientToolClient,
     RetryPolicy,
     ToolClient,
 )
-from change_gate.agent.resolving_client import (  # noqa: E402
+from warden.agent.resolving_client import (  # noqa: E402
     HallucinationStats,
     ResolvingToolClient,
 )
-from change_gate.agent.state import AgentDeps  # noqa: E402
-from change_gate.agent.tool_client import InProcessToolClient  # noqa: E402
-from change_gate.audit import AuditLog  # noqa: E402
-from change_gate.clock import FixedClock  # noqa: E402
-from change_gate.data import seed  # noqa: E402
-from change_gate.db.repository import InMemoryRepository  # noqa: E402
-from change_gate.domain.decision import decide, validate_request  # noqa: E402
-from change_gate.domain.models import (  # noqa: E402
+from warden.agent.state import AgentDeps  # noqa: E402
+from warden.agent.tool_client import InProcessToolClient  # noqa: E402
+from warden.audit import AuditLog  # noqa: E402
+from warden.clock import FixedClock  # noqa: E402
+from warden.data import seed  # noqa: E402
+from warden.db.repository import InMemoryRepository  # noqa: E402
+from warden.domain.decision import decide, validate_request  # noqa: E402
+from warden.domain.models import (  # noqa: E402
     ChangeKind,
     ChangeRequest,
     Environment,
     Requester,
     Role,
 )
-from change_gate.domain.risk import assess_risk  # noqa: E402
-from change_gate.personas import PersonaMap, load_persona_map  # noqa: E402
-from change_gate.policy import ActionPolicy  # noqa: E402
-from change_gate.security import (  # noqa: E402
+from warden.domain.risk import assess_risk  # noqa: E402
+from warden.personas import PersonaMap, load_persona_map  # noqa: E402
+from warden.policy import ActionPolicy  # noqa: E402
+from warden.security import (  # noqa: E402
     PERSONA_AGENT,
     SCOPE_APPROVE,
     SCOPE_APPROVE_PROD,
     SCOPE_READ,
     AuthPrincipal,
 )
-from change_gate.tool_registry import REGISTRY, RejectedCall, diff_advertised, resolve_call  # noqa: E402
-from change_gate.tools import ToolService  # noqa: E402
+from warden.tool_registry import REGISTRY, RejectedCall, diff_advertised, resolve_call  # noqa: E402
+from warden.tools import ToolService  # noqa: E402
 
 CORPUS = Path(__file__).resolve().parent / "injections"
 TENANT = "acme"
 FOREIGN_TENANT = "globex"
-AGENT_CLIENT = "change-gate-agent"
-HUMAN_CLIENT = "change-gate-console"
-AGENT_SUBJECT = "service-account-change-gate-agent"
+AGENT_CLIENT = "warden-agent"
+HUMAN_CLIENT = "warden-console"
+AGENT_SUBJECT = "service-account-warden-agent"
 WRITE_TOOLS = ("record_decision", "route_change", "approve_change", "deny_change")
 ALL_SCOPES = frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD})
 
@@ -366,7 +366,7 @@ class HttpTransport:
 
     name = "http"
     guarded = True
-    issuer = "https://redteam.local/realms/change-gate"
+    issuer = "https://redteam.local/realms/warden"
 
     def __init__(self) -> None:
         self.world: Optional[World] = None
@@ -390,9 +390,9 @@ class HttpTransport:
         from cryptography.hazmat.primitives.asymmetric import rsa
         from jwt.algorithms import RSAAlgorithm
 
-        from change_gate.config import Settings
-        from change_gate.server.app import build_server
-        from change_gate.server.auth import JWKSResolver, ResourceServerConfig, TokenValidator
+        from warden.config import Settings
+        from warden.server.app import build_server
+        from warden.server.auth import JWKSResolver, ResourceServerConfig, TokenValidator
 
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
@@ -456,7 +456,7 @@ class HttpTransport:
         return jwt.encode(claims, self._key, algorithm="RS256", headers={"kid": "redteam"})
 
     def client_for(self, actor: Actor) -> ToolClient:
-        from change_gate.agent.mcp_client import MCPToolClient
+        from warden.agent.mcp_client import MCPToolClient
 
         return MCPToolClient(self.url, self.token(actor))
 

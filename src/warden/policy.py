@@ -1,9 +1,9 @@
 """
 The action policy: one check every writing tool runs before it has an effect.
 
-Policy lives in the versioned file policy/change-gate.policy.json, never in a
+Policy lives in the versioned file policy/warden.policy.json, never in a
 prompt. Rules are read top to bottom, the first match wins, and anything no rule
-matches gets the file's default, which is deny. Set CHANGE_GATE_POLICY to point
+matches gets the file's default, which is deny. Set WARDEN_POLICY to point
 at a different file.
 """
 
@@ -26,12 +26,12 @@ EFFECTS = ("allow", "deny")
 
 
 def default_policy_path() -> Path:
-    override = os.getenv("CHANGE_GATE_POLICY")
+    override = os.getenv("WARDEN_POLICY")
     if override:
         return Path(override)
-    # src/change_gate/policy.py -> repo root. The Docker image keeps the same
+    # src/warden/policy.py -> repo root. The Docker image keeps the same
     # layout under /app, so this resolves there too.
-    return Path(__file__).resolve().parents[2] / "policy" / "change-gate.policy.json"
+    return Path(__file__).resolve().parents[2] / "policy" / "warden.policy.json"
 
 
 def load_policy_document(path: Optional[Path] = None) -> dict:

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://change-gate.example/policy.schema.json",
-  "title": "Change-Gate action policy",
+  "$id": "https://warden.example/policy.schema.json",
+  "title": "Warden action policy",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "personas", "tools", "rules", "default"],

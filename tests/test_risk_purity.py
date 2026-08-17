@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from change_gate.data import seed
-from change_gate.domain import decision as decision_mod
-from change_gate.domain import risk
+from warden.data import seed
+from warden.domain import decision as decision_mod
+from warden.domain import risk
 
 NOW = seed.EVAL_NOW
 

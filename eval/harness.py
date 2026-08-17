@@ -15,27 +15,27 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from change_gate.agent.failure_injection import FailureInjector, InjectionStats  # noqa: E402
-from change_gate.agent.graph import run_task  # noqa: E402
-from change_gate.agent.llm import DeterministicExplainer  # noqa: E402
-from change_gate.agent.resilience import (  # noqa: E402
+from warden.agent.failure_injection import FailureInjector, InjectionStats  # noqa: E402
+from warden.agent.graph import run_task  # noqa: E402
+from warden.agent.llm import DeterministicExplainer  # noqa: E402
+from warden.agent.resilience import (  # noqa: E402
     CallMetrics,
     ResilientToolClient,
     RetryPolicy,
 )
-from change_gate.agent.state import AgentDeps  # noqa: E402
-from change_gate.agent.tool_client import InProcessToolClient  # noqa: E402
-from change_gate.audit import AuditLog  # noqa: E402
-from change_gate.clock import FixedClock  # noqa: E402
-from change_gate.data import seed  # noqa: E402
-from change_gate.db.repository import InMemoryRepository  # noqa: E402
-from change_gate.security import (  # noqa: E402
+from warden.agent.state import AgentDeps  # noqa: E402
+from warden.agent.tool_client import InProcessToolClient  # noqa: E402
+from warden.audit import AuditLog  # noqa: E402
+from warden.clock import FixedClock  # noqa: E402
+from warden.data import seed  # noqa: E402
+from warden.db.repository import InMemoryRepository  # noqa: E402
+from warden.security import (  # noqa: E402
     SCOPE_APPROVE,
     SCOPE_APPROVE_PROD,
     SCOPE_READ,
     AuthPrincipal,
 )
-from change_gate.tools import ToolService  # noqa: E402
+from warden.tools import ToolService  # noqa: E402
 
 PER_ATTEMPT_MS = 8.0
 SPIKE_SECONDS = 0.25

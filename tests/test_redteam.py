@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from change_gate.personas import load_persona_map
+from warden.personas import load_persona_map
 from eval.redteam import (
     InProcessTransport,
     load_cases,

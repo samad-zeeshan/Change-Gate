@@ -10,10 +10,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
-from change_gate.security import (
+from warden.security import (
     SCOPE_APPROVE_PROD,
 )
-from change_gate.server.auth import (
+from warden.server.auth import (
     InsufficientScope,
     InvalidToken,
     JWKSResolver,
@@ -24,10 +24,10 @@ from change_gate.server.auth import (
     validate_bearer,
     www_authenticate_header,
 )
-from change_gate.server.metadata import protected_resource_metadata, well_known_path
+from warden.server.metadata import protected_resource_metadata, well_known_path
 
-ISSUER = "https://idp.example/realms/change-gate"
-AUDIENCE = "https://mcp.change-gate.example/mcp"
+ISSUER = "https://idp.example/realms/warden"
+AUDIENCE = "https://mcp.warden.example/mcp"
 KID = "test-key-1"
 
 

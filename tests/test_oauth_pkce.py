@@ -5,7 +5,7 @@ import base64
 import hashlib
 from urllib.parse import parse_qs, urlparse
 
-from change_gate.agent.oauth import build_authorization_url, generate_pkce
+from warden.agent.oauth import build_authorization_url, generate_pkce
 
 
 def test_pkce_challenge_is_s256_of_verifier():

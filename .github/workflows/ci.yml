@@ -1,11 +1,11 @@
-name: ci
+name: warden-ci
 
 on:
   push:
   pull_request:
 
 jobs:
-  in-image-suite:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

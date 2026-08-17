@@ -18,11 +18,11 @@ function Invoke-Case {
     param([string]$ReqId, [string]$Caption)
     Write-Host ""
     Write-Host "  $Caption" -ForegroundColor Cyan
-    Write-Host "  > python -m change_gate.agent.main $ReqId" -ForegroundColor DarkGray
+    Write-Host "  > python -m warden.agent.main $ReqId" -ForegroundColor DarkGray
     Write-Host ""
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    & $py -m change_gate.agent.main $ReqId 2>$null
+    & $py -m warden.agent.main $ReqId 2>$null
     $ErrorActionPreference = $prev
     Start-Sleep -Seconds 2
 }

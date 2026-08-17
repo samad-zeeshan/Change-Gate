@@ -3,12 +3,12 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "change-gate"
+name = "warden"
 version = "0.1.0"
-description = "Multi-tenant config-change / feature-flag approval gate: LangGraph agent + secure MCP server with a deterministic risk engine."
+description = "Warden: a guard for changes to live software. LangGraph agent, MCP server, deterministic risk engine, hash-chained audit log."
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Change-Gate" }]
+authors = [{ name = "Samad Zeeshan" }]
 
 dependencies = [
     "langgraph==0.3.34",

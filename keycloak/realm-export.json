@@ -1,5 +1,5 @@
 {
-  "realm": "change-gate",
+  "realm": "warden",
   "enabled": true,
   "accessTokenLifespan": 300,
   "sslRequired": "none",
@@ -13,7 +13,7 @@
     {
       "username": "alice",
       "enabled": true,
-      "email": "alice@change-gate.example",
+      "email": "alice@warden.example",
       "emailVerified": true,
       "firstName": "Alice",
       "lastName": "Approver",
@@ -23,7 +23,7 @@
     {
       "username": "dev-bob",
       "enabled": true,
-      "email": "bob@change-gate.example",
+      "email": "bob@warden.example",
       "emailVerified": true,
       "firstName": "Bob",
       "lastName": "Requester",
@@ -53,8 +53,8 @@
   ],
   "clients": [
     {
-      "clientId": "change-gate-agent",
-      "name": "Change-Gate Agent (service account, demo)",
+      "clientId": "warden-agent",
+      "name": "Warden Agent (service account, demo)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -106,8 +106,8 @@
       ]
     },
     {
-      "clientId": "change-gate-agent-base",
-      "name": "Change-Gate Agent (base scope only — for negative tests)",
+      "clientId": "warden-agent-base",
+      "name": "Warden Agent (base scope only — for negative tests)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -151,8 +151,8 @@
       ]
     },
     {
-      "clientId": "change-gate-console",
-      "name": "Change-Gate Console (human SSO, demo)",
+      "clientId": "warden-console",
+      "name": "Warden Console (human SSO, demo)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,

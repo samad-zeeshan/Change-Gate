@@ -30,9 +30,9 @@ def _build_deps(args) -> AgentDeps:
     if args.mcp_url:
         from .mcp_client import MCPToolClient
 
-        token = os.environ.get("CHANGE_GATE_ACCESS_TOKEN", "")
+        token = os.environ.get("WARDEN_ACCESS_TOKEN", "")
         if not token:
-            sys.exit("CHANGE_GATE_ACCESS_TOKEN is required with --mcp-url")
+            sys.exit("WARDEN_ACCESS_TOKEN is required with --mcp-url")
         inner = MCPToolClient(args.mcp_url, token)
     else:
         principal = AuthPrincipal(
@@ -42,7 +42,7 @@ def _build_deps(args) -> AgentDeps:
             scopes=frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD}),
         )
         repo = InMemoryRepository(args.tenant)
-        # --now pins the in-process server clock, the same job CHANGE_GATE_NOW does
+        # --now pins the in-process server clock, the same job WARDEN_NOW does
         # for the real server. The agent itself never sends a time.
         clock = FixedClock(ensure_utc(datetime.fromisoformat(args.now)))
         service = ToolService(repo, clock, principal=principal)
@@ -72,7 +72,7 @@ def main() -> None:
     ap.add_argument("--no-resilience", action="store_true", help="disable retries/degradation")
     args = ap.parse_args()
 
-    telemetry.setup_telemetry("change-gate-agent")
+    telemetry.setup_telemetry("warden-agent")
     try:
         deps = _build_deps(args)
         final = run_task(args.request_id, args.now, deps)

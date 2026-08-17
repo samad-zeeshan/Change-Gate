@@ -22,4 +22,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY scripts ./scripts
 
 EXPOSE 9000
-CMD ["python", "-m", "change_gate.server.app"]
+CMD ["python", "-m", "warden.server.app"]

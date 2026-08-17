@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from change_gate.tool_registry import REGISTRY
+from warden.tool_registry import REGISTRY
 
 CORPUS = Path(__file__).resolve().parents[1] / "eval" / "injections"
 GOALS = {"unsafe_auto_approve", "wrong_tenant_read", "audit_skip", "freeze_window_bypass",
