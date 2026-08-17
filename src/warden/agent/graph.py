@@ -30,12 +30,14 @@ def node_fetch(state: AgentState, config: RunnableConfig) -> dict:
     deps = _deps(config)
     rid = state["request_id"]
     out: dict[str, Any] = {}
+    # No call names the request. The task credential is bound to it, so the
+    # server supplies it and injected text has no argument to redirect.
     with telemetry.span("agent.fetch", tool="fetch", request_id=rid) as sp:
         # The third field is "critical". Losing the request or the dependency
         # graph degrades the run (and later forces a route), but missing freeze or
         # recent-change data is only a warning since the assessment still holds.
         reads = {
-            "request": ("get_change_request", {"request_id": rid}, True),
+            "request": ("get_change_request", {}, True),
             "policy": ("get_change_policy", {}, False),
             "graph": ("get_dependency_graph", {}, True),
             "freeze": ("get_freeze_windows", {}, False),
@@ -73,7 +75,7 @@ def node_validate(state: AgentState, config: RunnableConfig) -> dict:
     rid = state["request_id"]
     with telemetry.span("agent.validate", tool="validate_change_request", request_id=rid) as sp:
         try:
-            validation = deps.client.call("validate_change_request", request_id=rid)
+            validation = deps.client.call("validate_change_request")
             sp.set("outcome", "ok")
             return {"validation": validation}
         except ToolUnavailable as exc:
@@ -94,7 +96,7 @@ def node_risk(state: AgentState, config: RunnableConfig) -> dict:
         try:
             # No now= here. The server owns the clock, so a caller cannot move the
             # freeze check by picking its own instant.
-            risk = deps.client.call("assess_change_risk", request_id=rid)
+            risk = deps.client.call("assess_change_risk")
             sp.set("risk.band", risk.get("band"))
             sp.set("outcome", "ok")
             return {"risk": risk}
@@ -121,7 +123,6 @@ def node_decide(state: AgentState, config: RunnableConfig) -> dict:
             # instead of silently shipping on partial data.
             result = deps.client.call(
                 "record_decision",
-                request_id=rid,
                 trace_id=deps.trace_id,
                 force_route=degraded,
             )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..tool_registry import RejectedCall, resolve_call
+from ..tool_registry import REGISTRY, RejectedCall, ToolSpec, resolve_call
 from .resilience import DomainToolError, ToolClient
 
 
@@ -27,13 +27,15 @@ class HallucinationStats:
 
 class ResolvingToolClient:
 
-    def __init__(self, inner: ToolClient, *, stats: HallucinationStats | None = None) -> None:
+    def __init__(self, inner: ToolClient, *, stats: HallucinationStats | None = None,
+                 registry: dict[str, ToolSpec] = REGISTRY) -> None:
         self.inner = inner
         self.stats = stats or HallucinationStats()
+        self.registry = registry
 
     def call(self, tool: str, **kwargs) -> dict:
         try:
-            resolve_call(tool, kwargs)
+            resolve_call(tool, kwargs, self.registry)
         except RejectedCall as exc:
             self.stats.record(exc)
             raise DomainToolError(f"not sent: {exc}") from exc

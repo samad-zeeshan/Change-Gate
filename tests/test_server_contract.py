@@ -1,5 +1,9 @@
+"""The agent sends only what the server declares, and server-side refusals are audited."""
+
 
 from __future__ import annotations
+
+import dataclasses
 
 import pytest
 
@@ -42,11 +46,11 @@ class _Recorder:
 
 
 @pytest.mark.parametrize("scenario", seed.SCENARIOS, ids=lambda s: s.name)
-def test_agent_only_sends_arguments_the_server_declares(acme_service, scenario):
+def test_agent_only_sends_arguments_the_server_declares(bound_service, scenario):
     # FastMCP drops arguments a tool does not declare without saying so. Anything
     # the agent sends that is not in the server signature works offline and is
     # silently lost over MCP, so the two must match exactly.
-    recorder = _Recorder(InProcessToolClient(acme_service))
+    recorder = _Recorder(InProcessToolClient(bound_service(scenario.request.id)))
     deps = AgentDeps(
         client=ResilientToolClient(recorder, metrics=CallMetrics()),
         explainer=DeterministicExplainer(),
@@ -65,10 +69,11 @@ def test_agent_only_sends_arguments_the_server_declares(acme_service, scenario):
 async def test_record_decision_over_mcp_keeps_trace_id(monkeypatch, acme_repo,
                                                        elevated_principal, audit_log):
     monkeypatch.setattr(server_app, "connect", lambda dsn, tenant: acme_repo)
-    monkeypatch.setattr(server_app, "_principal_from_context", lambda: elevated_principal)
+    bound = dataclasses.replace(elevated_principal, request_id="cr-002")
+    monkeypatch.setattr(server_app, "_principal_from_context", lambda: bound)
     server = _server()
 
-    await server.call_tool("record_decision", {"request_id": "cr-002", "trace_id": "t-mcp-1"})
+    await server.call_tool("record_decision", {"trace_id": "t-mcp-1"})
 
     entry = audit_log.for_tenant("acme")[-1]
     assert entry.request_id == "cr-002"
@@ -78,7 +83,8 @@ async def test_record_decision_over_mcp_keeps_trace_id(monkeypatch, acme_repo,
 async def test_server_audits_a_write_refused_for_a_missing_scope(acme_repo, audit_log):
     from warden.security import SCOPE_READ, AuthPrincipal
 
-    read_only = AuthPrincipal("svc-read", "acme", "lead", frozenset({SCOPE_READ}))
+    read_only = AuthPrincipal("svc-read", "acme", "lead", frozenset({SCOPE_READ}),
+                              request_id="cr-002")
     server = server_app.build_server(
         Settings(issuer="https://idp.example/realms/warden",
                  jwks_uri="https://idp.example/certs",
@@ -87,7 +93,7 @@ async def test_server_audits_a_write_refused_for_a_missing_scope(acme_repo, audi
         repo_factory=lambda tenant: acme_repo, principal_provider=lambda: read_only,
     )
     with pytest.raises(Exception):
-        await server.call_tool("record_decision", {"request_id": "cr-002"})
+        await server.call_tool("record_decision", {})
     rows = audit_log.for_tenant("acme")
     assert [r.action for r in rows] == ["scope_denied"]
     assert rows[0].request_id == "cr-002"

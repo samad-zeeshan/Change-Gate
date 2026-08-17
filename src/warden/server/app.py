@@ -1,6 +1,11 @@
+"""The MCP server: token checks, the tool boundary, and the task credential exchange.
+
+Tools are built from the pinned registry, so what the server advertises is what the agent side checks.
+"""
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime
 from typing import Any, Callable, Optional
 
@@ -11,22 +16,28 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import AnyHttpUrl
 
 from .. import telemetry
-from ..clock import FixedClock, SystemClock, ensure_utc
 from ..boundary import ToolBoundary
+from ..clock import FixedClock, SystemClock, ensure_utc
 from ..config import Settings, settings
+from ..credentials import CredentialRefused, TaskCredentialIssuer, exchange_for_task
 from ..db.postgres_repository import connect
 from ..db.repository import Repository
 from ..personas import load_persona_map
 from ..security import (
+    BINDING_REQUEST,
     PERSONA_UNKNOWN,
     SCOPE_APPROVE,
     SCOPE_READ,
     AuthPrincipal,
     AuthorizationError,
 )
-from ..tool_registry import REGISTRY
+from ..tool_registry import ToolSpec, registry_for
 from ..tools import ToolError, ToolService
-from .auth import JWKSResolver, ResourceServerConfig, TokenValidator
+from .auth import AuthError, JWKSResolver, ResourceServerConfig, TokenValidator, validate_bearer
+
+_PY_TYPE = {"string": str, "boolean": bool}
+_DEFAULT = {"string": "", "boolean": False}
+_TRACED = {"get_change_request", "assess_change_risk", "record_decision"}
 
 
 class JWTVerifier(TokenVerifier):
@@ -50,6 +61,10 @@ class JWTVerifier(TokenVerifier):
                 "role": principal.role,
                 "persona": principal.persona,
                 "gate_roles": sorted(principal.gate_roles),
+                "request_id": principal.request_id,
+                "tenants": sorted(principal.tenants),
+                "token_id": principal.token_id,
+                "raw": principal.claims,
             },
         )
 
@@ -68,6 +83,10 @@ def _principal_from_context() -> AuthPrincipal:
         # so it gets no persona and no roles rather than a default one.
         persona=str(claims.get("persona") or PERSONA_UNKNOWN),
         gate_roles=frozenset(claims.get("gate_roles") or ()),
+        request_id=str(claims.get("request_id") or ""),
+        tenants=frozenset(claims.get("tenants") or ()),
+        token_id=str(claims.get("token_id") or ""),
+        claims=dict(claims.get("raw") or {}),
     )
 
 
@@ -102,13 +121,18 @@ def build_server(
     repo_factory: Callable[[str], Repository] | None = None,
     principal_provider: Callable[[], AuthPrincipal] | None = None,
     validator: TokenValidator | None = None,
+    task_issuer: TaskCredentialIssuer | None = None,
+    binding: str = BINDING_REQUEST,
 ) -> FastMCP:
     # The keyword arguments exist so the red-team runner and the tests can run
     # this exact server without Postgres or Keycloak. Production passes none.
     cfg = cfg or settings()
     telemetry.setup_telemetry(cfg.service_name)
     persona_map = load_persona_map()
+    registry = registry_for(binding)
 
+    task_issuer = task_issuer or (validator.task_issuer if validator else None) or \
+        TaskCredentialIssuer(audience=cfg.resource_url, key=cfg.task_key())
     validator = validator or TokenValidator(
         ResourceServerConfig(
             issuer=cfg.issuer,
@@ -117,6 +141,7 @@ def build_server(
         ),
         JWKSResolver(jwks_uri=cfg.jwks_uri),
         persona_map=persona_map,
+        task_issuer=task_issuer,
     )
 
     clock = (
@@ -131,12 +156,20 @@ def build_server(
     def _repo(tenant_id: str) -> Repository:
         return repo_factory(tenant_id) if repo_factory else connect(cfg.pg_dsn, tenant_id)
 
-    def _service() -> ToolService:
+    def _boundary() -> ToolBoundary:
         principal = _principal()
-        return ToolService(_repo(principal.tenant_id), clock, principal=principal)
+
+        def for_tenant(tenant: str) -> ToolService:
+            import dataclasses
+
+            scoped = dataclasses.replace(principal, tenant_id=tenant)
+            return ToolService(_repo(tenant), clock, principal=scoped)
+
+        service = ToolService(_repo(principal.tenant_id), clock, principal=principal)
+        return ToolBoundary(service, persona_map, binding=binding, tenant_service=for_tenant)
 
     def _gate(name: str, arguments: dict) -> None:
-        ToolBoundary(_service(), persona_map).admit(name, arguments)
+        _boundary().admit(name, arguments)
 
     def _visible(name: str) -> bool:
         try:
@@ -146,7 +179,7 @@ def build_server(
 
     mcp = GatedFastMCP(
         name="warden",
-        instructions="Multi-tenant config-change / feature-flag approval gate.",
+        instructions="Warden: an approval gate for config changes and feature-flag flips.",
         host=cfg.host,
         port=cfg.port,
         token_verifier=JWTVerifier(validator),
@@ -159,101 +192,78 @@ def build_server(
         visible=_visible,
     )
 
-    def _now() -> str:
-        return clock.now().isoformat()
-
-    def tool(name: str):
-        # Descriptions come from the pinned registry, so what the server
-        # advertises is exactly what the agent side checks against.
-        return mcp.tool(name=name, description=REGISTRY[name].description)
-
-
-    @tool("get_change_request")
-    def get_change_request(request_id: str) -> dict:
-        with telemetry.span("tool.get_change_request", tool="get_change_request"):
-            return _wrap(lambda s: s.get_change_request(request_id))
-
-    @tool("get_change_policy")
-    def get_change_policy() -> dict:
-        return _wrap(lambda s: s.get_change_policy())
-
-    @tool("get_config_state")
-    def get_config_state(key: str, environment: str) -> dict:
-        return _wrap(lambda s: s.get_config_state(key, environment))
-
-    @tool("get_dependency_graph")
-    def get_dependency_graph() -> dict:
-        return _wrap(lambda s: s.get_dependency_graph())
-
-    @tool("get_freeze_windows")
-    def get_freeze_windows() -> dict:
-        return _wrap(lambda s: s.get_freeze_windows())
-
-    @tool("get_recent_changes")
-    def get_recent_changes() -> dict:
-        return _wrap(lambda s: s.get_recent_changes())
-
-    @tool("validate_change_request")
-    def validate_change_request(request_id: str) -> dict:
-        return _wrap(lambda s: s.validate_change_request(request_id))
-
-    @tool("assess_change_risk")
-    def assess_change_risk(request_id: str) -> dict:
-        with telemetry.span("tool.assess_change_risk", tool="assess_change_risk"):
-            return _wrap(lambda s: s.assess_change_risk(request_id, now=_now()))
-
-
-    @tool("record_decision")
-    def record_decision(
-        request_id: str, explanation: str = "", force_route: bool = False, trace_id: str = ""
-    ) -> dict:
-        with telemetry.span("tool.record_decision", tool="record_decision"):
-            return _wrap(
-                lambda s: s.record_decision(
-                    request_id, now=_now(), trace_id=trace_id, explanation=explanation,
-                    force_route=force_route,
-                ),
-                require=(SCOPE_APPROVE,), request_id=request_id,
-            )
-
-    @tool("route_change")
-    def route_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
-        return _wrap(
-            lambda s: s.route_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,), request_id=request_id,
-        )
-
-    @tool("approve_change")
-    def approve_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
-        return _wrap(
-            lambda s: s.approve_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,), request_id=request_id,
-        )
-
-    @tool("deny_change")
-    def deny_change(request_id: str, reason: str = "", trace_id: str = "") -> dict:
-        return _wrap(
-            lambda s: s.deny_change(request_id, reason=reason, trace_id=trace_id),
-            require=(SCOPE_APPROVE,), request_id=request_id,
-        )
-
-    def _wrap(run, require: tuple[str, ...] = (), request_id: str = "") -> dict:
-        principal = _principal()
-        service = ToolService(_repo(principal.tenant_id), clock, principal=principal)
-        for scope in require:
-            if not principal.has_scope(scope):
-                # Refused before ToolService runs, so it is audited here. Without
-                # this, a write refused for scope would leave no trace.
-                msg = f"missing required scope: {scope}"
-                ToolBoundary(service, persona_map).audit_refusal(
-                    "scope_denied", {"request_id": request_id}, msg)
-                raise AuthorizationError(msg)
+    def _run(spec: ToolSpec, args: dict) -> dict:
+        boundary = _boundary()
+        service = boundary.service
+        if spec.writes and not service.principal.has_scope(SCOPE_APPROVE):
+            # Refused before ToolService runs, so it is audited here. Without
+            # this, a write refused for scope would leave no trace.
+            msg = f"missing required scope: {SCOPE_APPROVE}"
+            boundary.audit_refusal("scope_denied", args, msg)
+            raise AuthorizationError(msg)
+        # The server owns the clock. The agent never sends a time, and a time it
+        # tried to send was already rejected by the gate as an unknown argument.
+        if spec.name in ("assess_change_risk", "record_decision"):
+            args = {**args, "now": clock.now().isoformat()}
         try:
-            return run(service)
+            with telemetry.span(f"tool.{spec.name}", tool=spec.name) if spec.name in _TRACED \
+                    else _nullspan():
+                return boundary.dispatch(spec, args)
         except ToolError as exc:
             return {"error": str(exc), "kind": "tool_error"}
 
+    for spec in registry.values():
+        mcp.add_tool(_tool_fn(spec, _run), name=spec.name, description=spec.description)
+
+    @mcp.custom_route("/credentials/task", methods=["POST"])
+    async def task_credential(request):
+        from starlette.responses import JSONResponse
+
+        try:
+            principal = validate_bearer(validator, request.headers.get("authorization"))
+            body = await request.json()
+            request_id = str(body.get("request_id", ""))
+            token = exchange_for_task(task_issuer, principal, request_id,
+                                      _repo(principal.tenant_id))
+        except AuthError as exc:
+            return JSONResponse({"error": exc.error_code, "detail": exc.description},
+                                status_code=exc.status)
+        except CredentialRefused as exc:
+            return JSONResponse({"error": "refused", "detail": str(exc)}, status_code=403)
+        return JSONResponse({"access_token": token, "token_type": "Bearer",
+                             "expires_in": task_issuer.lifetime_seconds,
+                             "request_id": request_id})
+
+    mcp.task_issuer = task_issuer
     return mcp
+
+
+class _nullspan:
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _tool_fn(spec: ToolSpec, run: Callable[[ToolSpec, dict], dict]):
+    # FastMCP reads the input schema from the function signature, so the
+    # signature is built from the registry entry instead of written by hand.
+    params = [
+        inspect.Parameter(p.name, inspect.Parameter.KEYWORD_ONLY,
+                          default=inspect.Parameter.empty if p.required else _DEFAULT[p.type],
+                          annotation=_PY_TYPE[p.type])
+        for p in spec.params
+    ]
+
+    def fn(**kwargs) -> dict:
+        return run(spec, kwargs)
+
+    fn.__signature__ = inspect.Signature(params, return_annotation=dict)
+    fn.__annotations__ = {p.name: _PY_TYPE[p.type] for p in spec.params} | {"return": dict}
+    fn.__name__ = spec.name
+    return fn
 
 
 def main() -> None:

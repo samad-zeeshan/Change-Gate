@@ -1,3 +1,5 @@
+"""Run the agent on one change request, in-process or against a live MCP server."""
+
 
 from __future__ import annotations
 
@@ -30,16 +32,23 @@ def _build_deps(args) -> AgentDeps:
     if args.mcp_url:
         from .mcp_client import MCPToolClient
 
+        from .mcp_client import fetch_task_credential
+
         token = os.environ.get("WARDEN_ACCESS_TOKEN", "")
         if not token:
             sys.exit("WARDEN_ACCESS_TOKEN is required with --mcp-url")
-        inner = MCPToolClient(args.mcp_url, token)
+        # This process is the dispatcher. It holds the IdP token and trades it for
+        # a credential bound to this one request. The workflow only sees the latter.
+        task_token = fetch_task_credential(args.mcp_url, token, args.request_id)
+        inner = MCPToolClient(args.mcp_url, task_token)
     else:
         principal = AuthPrincipal(
             subject=f"agent-{args.tenant}",
             tenant_id=args.tenant,
             role="lead",
             scopes=frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD}),
+            request_id=args.request_id,
+            token_id=f"cli-{args.request_id}",
         )
         repo = InMemoryRepository(args.tenant)
         # --now pins the in-process server clock, the same job WARDEN_NOW does

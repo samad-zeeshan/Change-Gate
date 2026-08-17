@@ -1,3 +1,5 @@
+"""Run the injection corpus over every transport and write eval/redteam-results.json."""
+
 
 from __future__ import annotations
 
@@ -18,11 +20,12 @@ from eval.redteam import as_jsonable, load_cases, run_corpus  # noqa: E402
 
 from warden.policy import load_policy_document  # noqa: E402
 
-RUNS = ("http", "inprocess", "ablation")
+RUNS = ("http", "inprocess", "inprocess-v1", "ablation")
 RUN_LABEL = {
     "http": "Hardened, MCP over HTTP",
     "inprocess": "Hardened, in-process",
-    "ablation": "Ablation: new layers off",
+    "inprocess-v1": "Hardened, v1 tenant credential",
+    "ablation": "Ablation: boundary layers off",
 }
 GOAL_LABEL = {
     "unsafe_auto_approve": "unsafe auto-approve",

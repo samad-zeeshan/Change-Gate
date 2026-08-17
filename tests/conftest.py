@@ -56,3 +56,16 @@ def elevated_principal() -> AuthPrincipal:
 @pytest.fixture
 def acme_service(acme_repo, clock, elevated_principal) -> ToolService:
     return ToolService(acme_repo, clock, principal=elevated_principal)
+
+
+@pytest.fixture
+def bound_service(acme_repo, clock, elevated_principal):
+    # The dispatcher's job in tests: a service whose credential names one request.
+    import dataclasses
+
+    def make(request_id: str, principal: AuthPrincipal | None = None) -> ToolService:
+        base = principal or elevated_principal
+        bound = dataclasses.replace(base, request_id=request_id, token_id=f"t-{request_id}")
+        return ToolService(acme_repo, clock, principal=bound)
+
+    return make

@@ -6,6 +6,7 @@ Signature, issuer, and audience are all checked before any claim is trusted.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 from dataclasses import dataclass
@@ -85,14 +86,44 @@ class TokenValidator:
         config: ResourceServerConfig,
         resolver: JWKSResolver,
         persona_map=None,
+        task_issuer=None,
     ) -> None:
         self.config = config
         self.resolver = resolver
         # Without a persona map no token gets a persona, so it gets no roles
         # and can call nothing that checks roles.
         self.persona_map = persona_map
+        self.task_issuer = task_issuer
 
     def validate(self, token: str) -> AuthPrincipal:
+        issuer = self.task_issuer
+        if issuer is not None:
+            try:
+                unverified = jwt.decode(token, options={"verify_signature": False})
+            except jwt.PyJWTError as exc:
+                raise InvalidToken(f"invalid token: {exc}") from exc
+            if unverified.get("iss") == issuer.issuer:
+                return self._validate_task(token)
+        return self._validate_idp(token)
+
+    def _validate_task(self, token: str) -> AuthPrincipal:
+        issuer = self.task_issuer
+        try:
+            claims = jwt.decode(
+                token, key=issuer.public_pem, algorithms=["RS256"],
+                audience=issuer.audience, issuer=issuer.issuer,
+                leeway=self.config.leeway_seconds,
+                options={"require": ["exp", "iat", "aud", "iss", "jti", "request_id"]},
+            )
+        except jwt.ExpiredSignatureError as exc:
+            raise InvalidToken("task credential expired") from exc
+        except jwt.PyJWTError as exc:
+            raise InvalidToken(f"invalid task credential: {exc}") from exc
+        principal = self._principal_from_claims(claims)
+        return dataclasses.replace(principal, request_id=str(claims["request_id"]),
+                                   token_id=str(claims["jti"]))
+
+    def _validate_idp(self, token: str) -> AuthPrincipal:
         try:
             key = self.resolver.key_for(token)
         except AuthError:
@@ -139,6 +170,7 @@ class TokenValidator:
             persona, gate_roles = self.persona_map.resolve(claims)
         else:
             persona, gate_roles = PERSONA_UNKNOWN, frozenset()
+        tenants = claims.get("tenants")
         return AuthPrincipal(
             subject=claims.get("sub", ""),
             tenant_id=str(tenant_id),
@@ -146,6 +178,10 @@ class TokenValidator:
             scopes=scopes,
             persona=persona,
             gate_roles=gate_roles,
+            tenants=frozenset(str(t) for t in tenants) if isinstance(tenants, list)
+            else frozenset(),
+            token_id=str(claims.get("jti", "")),
+            claims=dict(claims),
         )
 
 

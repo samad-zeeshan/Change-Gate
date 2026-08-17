@@ -15,7 +15,7 @@ from .audit import AuditEntry
 from .clock import Clock, ensure_utc
 from .db.repository import CrossTenantAccess, Repository
 from .domain.decision import decide, validate_request
-from .domain.models import ChangeRequest, Decision, Environment
+from .domain.models import ChangeRequest, Decision
 from .domain.risk import RiskAssessment, assess_risk
 from .policy import (
     ActionPolicy,
@@ -77,11 +77,13 @@ class ToolService:
             "auto_approve_max_band": policy.auto_approve_max_band.value,
         }
 
-    def get_config_state(self, key: str, environment: str) -> dict:
-        env = Environment(environment)
-        cv = self.repo.get_config_state(key, env)
+    def get_config_state(self, request_id: str) -> dict:
+        # The key and environment come from the request, not from the caller, so
+        # this read cannot be pointed at a key the task does not change.
+        req = self._require_request(request_id)
+        cv = self.repo.get_config_state(req.key, req.environment)
         if cv is None:
-            raise ToolError(f"unknown key {key!r} in {environment!r}")
+            raise ToolError(f"unknown key {req.key!r} in {req.environment.value!r}")
         return {
             "key": cv.key,
             "environment": cv.environment.value,
@@ -413,6 +415,16 @@ class ToolService:
         return self.principal.subject if self.principal else req.requester.id
 
     def _require_request(self, request_id: str) -> ChangeRequest:
+        bound = self.principal.request_id if self.principal else ""
+        if bound and request_id != bound:
+            self.repo.append_audit(
+                subject=self.principal.subject, action="binding_denied", environment="",
+                decision="blocked", risk_band="", risk_score=0.0, before=None, after=None,
+                reason=f"credential is bound to {bound!r}, not {request_id!r}",
+                risk_breakdown={}, request_id=request_id, trace_id="",
+                timestamp=self.clock.now(),
+            )
+            raise AuthorizationError(f"credential is bound to {bound!r}, not {request_id!r}")
         try:
             req = self.repo.get_change_request(request_id)
         except CrossTenantAccess:

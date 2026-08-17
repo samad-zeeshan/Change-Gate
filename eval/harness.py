@@ -83,12 +83,13 @@ class ConditionResult:
         return self.successes / self.n if self.n else 0.0
 
 
-def _principal_for(tenant_id: str) -> AuthPrincipal:
+def _principal_for(tenant_id: str, request_id: str) -> AuthPrincipal:
     return AuthPrincipal(
         subject=f"agent-{tenant_id}",
         tenant_id=tenant_id,
         role="lead",
         scopes=frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD}),
+        request_id=request_id,
     )
 
 
@@ -116,7 +117,7 @@ def run_one_task(
 ) -> TaskOutcome:
     tenant_id = scenario.request.tenant_id
     repo = InMemoryRepository(tenant_id, audit_log=AuditLog())
-    service = ToolService(repo, FixedClock(seed.EVAL_NOW), principal=_principal_for(tenant_id))
+    service = ToolService(repo, FixedClock(seed.EVAL_NOW), principal=_principal_for(tenant_id, scenario.request.id))
 
     latency = _LatencyAccumulator()
     inner = InProcessToolClient(service)

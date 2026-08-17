@@ -1,3 +1,5 @@
+"""MCP client for the agent: one streamable-HTTP session per tool call, errors mapped to the resilience types."""
+
 
 from __future__ import annotations
 
@@ -10,6 +12,18 @@ from .resilience import (
     ToolServerError,
     ToolTimeout,
 )
+
+
+def fetch_task_credential(mcp_url: str, idp_token: str, request_id: str,
+                          timeout: float = 10.0) -> str:
+    import httpx
+
+    url = mcp_url.rstrip("/").removesuffix("/mcp") + "/credentials/task"
+    resp = httpx.post(url, json={"request_id": request_id}, timeout=timeout,
+                      headers={"Authorization": f"Bearer {idp_token}"})
+    if resp.status_code != 200:
+        raise DomainToolError(f"task credential refused ({resp.status_code}): {resp.text}")
+    return resp.json()["access_token"]
 
 
 class MCPToolClient:

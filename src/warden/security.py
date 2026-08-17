@@ -19,6 +19,9 @@ PERSONA_AGENT = "agent"
 PERSONA_HUMAN = "human"
 PERSONA_UNKNOWN = "unknown"
 
+BINDING_REQUEST = "request"
+BINDING_PARAMETER = "parameter"
+
 
 class AuthorizationError(PermissionError):
 
@@ -39,9 +42,20 @@ class AuthPrincipal:
     # a network caller.
     persona: str = PERSONA_AGENT
     gate_roles: frozenset[str] = field(default_factory=frozenset)
+    # Set only from a task credential. An empty value means the token names a
+    # tenant but no change request, and the boundary refuses every tool call.
+    request_id: str = ""
+    # Tenants the credential may name as an argument. Used only by the parameter
+    # arm of the tenant ablation, which is the pattern request binding replaces.
+    tenants: frozenset[str] = field(default_factory=frozenset)
+    token_id: str = ""
+    claims: dict = field(default_factory=dict, compare=False, hash=False)
 
     def has_scope(self, scope: str) -> bool:
         return scope in self.scopes
+
+    def entitled_tenants(self) -> frozenset[str]:
+        return self.tenants or frozenset({self.tenant_id})
 
 
 def required_scope_for(decision: Decision, environment: Environment) -> str | None:

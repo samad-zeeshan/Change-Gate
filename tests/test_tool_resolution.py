@@ -1,3 +1,5 @@
+"""Closed-world resolution of tool calls on both sides of the boundary."""
+
 
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ from warden.policy import load_policy_document
 from warden.security import PERSONA_HUMAN, PERSONA_UNKNOWN, AuthPrincipal
 from warden.server import app as server_app
 from warden.tool_registry import (
+    PARAMETER_REGISTRY,
     REGISTRY,
     REJECT_KINDS,
     RejectedCall,
@@ -75,25 +78,24 @@ def test_drift_is_reported_for_a_changed_description_new_tool_or_new_argument():
 
 
 @pytest.mark.parametrize(
-    "tool, args, kind",
+    "tool, args, kind, registry",
     [
-        ("disable_audit", {}, "unknown_tool"),
-        ("approve_all", {"request_id": "cr-002"}, "unknown_tool"),
-        ("record_decision", {"request_id": "cr-003", "now": "2026-07-01T00:00:00"},
-         "unknown_argument"),
-        ("get_change_request", {"request_id": "cr-001", "tenant_id": "globex"},
-         "unknown_argument"),
-        ("record_decision", {"request_id": "cr-001", "force_route": "false"}, "wrong_type"),
-        ("record_decision", {"request_id": "cr-001", "force_route": 0}, "wrong_type"),
-        ("get_change_request", {"request_id": 42}, "wrong_type"),
-        ("route_change", {"request_id": None}, "wrong_type"),
-        ("approve_change", {"reason": "ok"}, "missing_argument"),
-        ("get_config_state", {"key": "db_pool_size"}, "missing_argument"),
+        ("disable_audit", {}, "unknown_tool", REGISTRY),
+        ("approve_all", {}, "unknown_tool", REGISTRY),
+        ("record_decision", {"now": "2026-07-01T00:00:00"}, "unknown_argument", REGISTRY),
+        ("get_change_request", {"tenant_id": "globex"}, "unknown_argument", REGISTRY),
+        ("record_decision", {"force_route": "false"}, "wrong_type", REGISTRY),
+        ("record_decision", {"force_route": 0}, "wrong_type", REGISTRY),
+        ("approve_change", {"reason": 42}, "wrong_type", REGISTRY),
+        ("route_change", {"trace_id": None}, "wrong_type", REGISTRY),
+        ("approve_change", {"tenant_id": "acme", "reason": "ok"}, "missing_argument",
+         PARAMETER_REGISTRY),
+        ("get_change_policy", {}, "missing_argument", PARAMETER_REGISTRY),
     ],
 )
-def test_each_rejection_class(tool, args, kind):
+def test_each_rejection_class(tool, args, kind, registry):
     with pytest.raises(RejectedCall) as exc:
-        resolve_call(tool, args)
+        resolve_call(tool, args, registry)
     assert exc.value.kind == kind
     assert kind in REJECT_KINDS
     assert tool in str(exc.value)
@@ -107,8 +109,7 @@ def test_arguments_that_are_not_a_mapping_are_rejected():
 
 def test_valid_calls_resolve():
     assert resolve_call("get_change_policy", {}).name == "get_change_policy"
-    assert resolve_call("record_decision", {"request_id": "cr-001", "force_route": True,
-                                            "trace_id": "t"}).writes is True
+    assert resolve_call("record_decision", {"force_route": True, "trace_id": "t"}).writes is True
 
 
 class _Spy:
@@ -126,11 +127,11 @@ def test_agent_side_resolver_rejects_before_sending_and_counts():
     stats = HallucinationStats()
     client = ResolvingToolClient(spy, stats=stats)
     with pytest.raises(DomainToolError) as exc:
-        client.call("assess_change_risk", request_id="cr-003", now="2026-07-01T00:00:00")
+        client.call("assess_change_risk", now="2026-07-01T00:00:00")
     assert "unknown_argument" in str(exc.value)
     with pytest.raises(DomainToolError):
         client.call("disable_audit")
-    client.call("get_change_request", request_id="cr-001")
+    client.call("get_change_request")
     assert [t for t, _ in spy.calls] == ["get_change_request"]
     assert stats.rejected == 2
     assert stats.by_kind == {"unknown_argument": 1, "unknown_tool": 1}
@@ -146,10 +147,11 @@ def test_agent_side_rejection_is_not_retried():
 
 
 @pytest.mark.parametrize("scenario", seed.SCENARIOS, ids=lambda s: s.name)
-def test_the_real_agent_makes_no_hallucinated_calls(acme_service, scenario):
+def test_the_real_agent_makes_no_hallucinated_calls(bound_service, scenario):
     stats = HallucinationStats()
     client = ResilientToolClient(
-        ResolvingToolClient(InProcessToolClient(acme_service), stats=stats),
+        ResolvingToolClient(InProcessToolClient(bound_service(scenario.request.id)),
+                            stats=stats),
         metrics=CallMetrics(),
     )
     deps = AgentDeps(client=client, explainer=DeterministicExplainer(), trace_id="t")
@@ -158,51 +160,57 @@ def test_the_real_agent_makes_no_hallucinated_calls(acme_service, scenario):
     assert stats.rejected == 0
 
 
-def test_in_process_boundary_rejects_a_smuggled_clock_and_audits_it(acme_service, audit_log):
-    client = InProcessToolClient(acme_service)
+def test_in_process_boundary_rejects_a_smuggled_clock_and_audits_it(bound_service, audit_log):
+    service = bound_service("cr-003")
+    client = InProcessToolClient(service)
     with pytest.raises(DomainToolError) as exc:
-        client.call("record_decision", request_id="cr-003", now="2026-07-01T00:00:00+00:00")
+        client.call("record_decision", now="2026-07-01T00:00:00+00:00")
     assert "unknown_argument" in str(exc.value)
     entries = audit_log.for_tenant("acme")
     assert [e.action for e in entries] == ["tool_call_rejected"]
     assert entries[0].request_id == "cr-003"
     # Never executed: no decision was recorded, so the request is still new.
-    assert acme_service.request_state("cr-003") == "new"
+    assert service.request_state("cr-003") == "new"
     assert audit_log.verify_chain("acme")
 
 
-def test_in_process_boundary_enforces_tool_roles(acme_service, audit_log):
-    acme_service.record_decision("cr-002")
-    client = InProcessToolClient(acme_service)
+def test_in_process_boundary_enforces_tool_roles(bound_service, audit_log):
+    service = bound_service("cr-002")
+    service.record_decision("cr-002")
+    client = InProcessToolClient(service)
     with pytest.raises(DomainToolError) as exc:
-        client.call("approve_change", request_id="cr-002")
+        client.call("approve_change")
     assert "approve_change" in str(exc.value)
     assert audit_log.for_tenant("acme")[-1].action == "tool_denied"
-    assert acme_service.request_state("cr-002") == "routed"
+    assert service.request_state("cr-002") == "routed"
 
 
 def test_in_process_boundary_denies_every_tool_to_an_unknown_persona(acme_repo, clock,
                                                                     audit_log):
-    stranger = AuthPrincipal("x", "acme", "lead", persona=PERSONA_UNKNOWN)
+    stranger = AuthPrincipal("x", "acme", "lead", persona=PERSONA_UNKNOWN, request_id="cr-001")
     client = InProcessToolClient(ToolService(acme_repo, clock, principal=stranger))
     with pytest.raises(DomainToolError):
-        client.call("get_change_request", request_id="cr-001")
+        client.call("get_change_request")
     assert audit_log.for_tenant("acme")[-1].action == "tool_denied"
 
 
 def test_cross_tenant_read_looks_like_not_found_and_is_audited(globex_repo, clock,
                                                               audit_log):
-    principal = AuthPrincipal("agent-globex", "globex", "lead")
+    # Even a credential somehow bound to another tenant's request finds nothing.
+    principal = AuthPrincipal("agent-globex", "globex", "lead", request_id="cr-001")
     client = InProcessToolClient(ToolService(globex_repo, clock, principal=principal))
     with pytest.raises(DomainToolError) as exc:
-        client.call("get_change_request", request_id="cr-001")
+        client.call("get_change_request")
     assert "not found" in str(exc.value)
     rows = audit_log.for_tenant("globex")
     assert [r.action for r in rows] == ["cross_tenant_denied"]
     assert audit_log.for_tenant("acme") == []
 
 
-def _gated_server(repo, principal):
+def _gated_server(repo, principal, request_id="cr-003"):
+    import dataclasses
+
+    principal = dataclasses.replace(principal, request_id=request_id)
     return server_app.build_server(
         _cfg(), repo_factory=lambda tenant: repo, principal_provider=lambda: principal,
     )
@@ -212,8 +220,7 @@ async def test_server_rejects_an_argument_fastmcp_would_drop(acme_repo, elevated
                                                              audit_log):
     server = _gated_server(acme_repo, elevated_principal)
     with pytest.raises(Exception) as exc:
-        await server.call_tool("record_decision",
-                               {"request_id": "cr-003", "now": "2026-07-01T00:00:00+00:00"})
+        await server.call_tool("record_decision", {"now": "2026-07-01T00:00:00+00:00"})
     assert "unknown_argument" in str(exc.value)
     assert [e.action for e in audit_log.for_tenant("acme")] == ["tool_call_rejected"]
 
@@ -228,21 +235,21 @@ async def test_server_rejects_an_unknown_tool_and_audits_it(acme_repo, elevated_
 
 async def test_server_enforces_tool_roles_at_call_time(acme_repo, elevated_principal,
                                                        audit_log):
-    server = _gated_server(acme_repo, elevated_principal)
-    await server.call_tool("record_decision", {"request_id": "cr-002", "trace_id": "t1"})
+    server = _gated_server(acme_repo, elevated_principal, "cr-002")
+    await server.call_tool("record_decision", {"trace_id": "t1"})
     with pytest.raises(Exception):
-        await server.call_tool("approve_change", {"request_id": "cr-002"})
+        await server.call_tool("approve_change", {})
     actions = [e.action for e in audit_log.for_tenant("acme")]
     assert actions == ["record_decision", "tool_denied"]
 
 
 async def test_server_lets_a_human_approver_approve(acme_repo, elevated_principal, audit_log):
-    await _gated_server(acme_repo, elevated_principal).call_tool(
-        "record_decision", {"request_id": "cr-005"})
+    await _gated_server(acme_repo, elevated_principal, "cr-005").call_tool(
+        "record_decision", {})
     human = AuthPrincipal("alice", "acme", "lead", elevated_principal.scopes,
                           persona=PERSONA_HUMAN, gate_roles=frozenset({"approver"}))
-    await _gated_server(acme_repo, human).call_tool(
-        "approve_change", {"request_id": "cr-005", "reason": "checked"})
+    await _gated_server(acme_repo, human, "cr-005").call_tool(
+        "approve_change", {"reason": "checked"})
     assert audit_log.for_tenant("acme")[-1].action == "approve_change"
     assert audit_log.verify_chain("acme")
 

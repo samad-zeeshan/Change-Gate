@@ -105,9 +105,11 @@ def write_redteam_svg(path: Path, data: dict) -> None:
     # Attack success rate per attacker goal, one bar per run. Same hand-written
     # SVG approach as write_svg so the chart needs no plotting library.
     runs = list(data["runs"])
-    colors = {"http": "#16a34a", "inprocess": "#2563eb", "ablation": "#dc2626"}
+    colors = {"http": "#16a34a", "inprocess": "#2563eb", "inprocess-v1": "#7c3aed",
+              "ablation": "#dc2626"}
     labels = {"http": "Hardened (MCP/HTTP)", "inprocess": "Hardened (in-process)",
-              "ablation": "Ablation (new layers off)"}
+              "inprocess-v1": "Hardened, v1 tenant credential",
+              "ablation": "Ablation (boundary layers off)"}
     goals = list(data["corpus"]["by_goal"])
     W, H = 760, 460
     ml, mr, mt, mb = 70, 30, 80, 70

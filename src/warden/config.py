@@ -1,3 +1,5 @@
+"""Server settings read from WARDEN_* environment variables."""
+
 
 from __future__ import annotations
 
@@ -27,6 +29,18 @@ class Settings:
     service_name: str = os.getenv("OTEL_SERVICE_NAME", "warden-mcp")
 
     now_override: str = os.getenv("WARDEN_NOW", "")
+
+    # PEM file for the task-credential signing key. Unset means a fresh key per
+    # process, which is fine for one server but breaks if several share traffic.
+    task_key_file: str = os.getenv("WARDEN_TASK_KEY_FILE", "")
+
+    def task_key(self):
+        if not self.task_key_file:
+            return None
+        from cryptography.hazmat.primitives import serialization
+
+        with open(self.task_key_file, "rb") as fh:
+            return serialization.load_pem_private_key(fh.read(), password=None)
 
 
 def settings() -> Settings:

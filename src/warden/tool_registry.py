@@ -14,6 +14,10 @@ from typing import Mapping
 
 REJECT_KINDS = ("unknown_tool", "unknown_argument", "wrong_type", "missing_argument")
 
+# Arguments that pick which tenant or which request a call acts on. None of the
+# tools below take one. The server reads both from the task credential.
+RESOURCE_ARGS = ("tenant_id", "request_id")
+
 
 @dataclass(frozen=True)
 class Param:
@@ -28,6 +32,7 @@ class ToolSpec:
     description: str
     params: tuple[Param, ...] = ()
     writes: bool = False
+    request_scoped: bool = False
 
     def param(self, name: str) -> Param | None:
         for p in self.params:
@@ -36,45 +41,71 @@ class ToolSpec:
         return None
 
 
-_RID = Param("request_id", "string", required=True)
-_HUMAN_SIDE = (_RID, Param("reason", "string"), Param("trace_id", "string"))
+_HUMAN_SIDE = (Param("reason", "string"), Param("trace_id", "string"))
 
 REGISTRY: dict[str, ToolSpec] = {
     spec.name: spec
     for spec in (
-        ToolSpec("get_change_request", "Read one change request by id.", (_RID,)),
+        ToolSpec("get_change_request", "Read the change request this task is bound to.",
+                 request_scoped=True),
         ToolSpec("get_change_policy", "Read the tenant's risk policy."),
-        ToolSpec("get_config_state", "Read the current value of a config key.",
-                 (Param("key", "string", True), Param("environment", "string", True))),
+        ToolSpec("get_config_state", "Read the current value of the key the request changes.",
+                 request_scoped=True),
         ToolSpec("get_dependency_graph", "Read the tenant's service dependency graph."),
         ToolSpec("get_freeze_windows", "Read the tenant's change freeze windows."),
         ToolSpec("get_recent_changes", "Read recent changes and incidents."),
         ToolSpec("validate_change_request",
-                 "Check a request's shape and the requester's authority.", (_RID,)),
-        ToolSpec("assess_change_risk", "Score a request with the deterministic risk engine.",
-                 (_RID,)),
+                 "Check the request's shape and the requester's authority.",
+                 request_scoped=True),
+        ToolSpec("assess_change_risk", "Score the request with the deterministic risk engine.",
+                 request_scoped=True),
         ToolSpec("record_decision",
-                 "Run the gate on a new request and record auto-approve, route or deny.",
-                 (_RID, Param("explanation", "string"), Param("force_route", "boolean"),
+                 "Run the gate on the new request and record auto-approve, route or deny.",
+                 (Param("explanation", "string"), Param("force_route", "boolean"),
                   Param("trace_id", "string")),
-                 writes=True),
-        ToolSpec("route_change", "Send a new request to a person without scoring it.",
-                 _HUMAN_SIDE, writes=True),
-        ToolSpec("approve_change", "Human approval of a routed request. Applies the change.",
-                 _HUMAN_SIDE, writes=True),
-        ToolSpec("deny_change", "Human denial of a routed request.", _HUMAN_SIDE,
-                 writes=True),
+                 writes=True, request_scoped=True),
+        ToolSpec("route_change", "Send the new request to a person without scoring it.",
+                 _HUMAN_SIDE, writes=True, request_scoped=True),
+        ToolSpec("approve_change", "Human approval of the routed request. Applies the change.",
+                 _HUMAN_SIDE, writes=True, request_scoped=True),
+        ToolSpec("deny_change", "Human denial of the routed request.", _HUMAN_SIDE,
+                 writes=True, request_scoped=True),
     )
 }
 
 
+def _with_ids(spec: ToolSpec) -> ToolSpec:
+    ids = [Param("tenant_id", "string", True)]
+    if spec.request_scoped:
+        ids.append(Param("request_id", "string", True))
+    return ToolSpec(spec.name, spec.description, tuple(ids) + spec.params, spec.writes,
+                    spec.request_scoped)
+
+
+# The v1 shape with the tenant added as a validated argument. It exists so the
+# ablation can measure the pattern the request binding replaces.
+PARAMETER_REGISTRY: dict[str, ToolSpec] = {n: _with_ids(s) for n, s in REGISTRY.items()}
+
+
+def registry_for(binding: str) -> dict[str, ToolSpec]:
+    return PARAMETER_REGISTRY if binding == "parameter" else REGISTRY
+
+
 class RejectedCall(Exception):
 
-    def __init__(self, kind: str, tool: str, detail: str) -> None:
+    def __init__(self, kind: str, tool: str, detail: str, names: tuple[str, ...] = ()) -> None:
         super().__init__(f"hallucinated call rejected ({kind}): {tool}: {detail}")
         self.kind = kind
         self.tool = tool
         self.detail = detail
+        self.names = names
+
+    @property
+    def names_a_resource(self) -> bool:
+        # Every unknown argument tries to pick a tenant or request. Under request
+        # binding no signature can express that, which is a different finding
+        # from a model inventing a tool or a flag.
+        return self.kind == "unknown_argument" and bool(self.names) and             set(self.names) <= set(RESOURCE_ARGS) | {"tenant"}
 
 
 def _type_ok(expected: str, value: object) -> bool:
@@ -98,7 +129,7 @@ def resolve_call(
 
     unknown = sorted(k for k in args if spec.param(k) is None)
     if unknown:
-        raise RejectedCall("unknown_argument", tool, f"does not take {unknown}")
+        raise RejectedCall("unknown_argument", tool, f"does not take {unknown}", tuple(unknown))
     missing = sorted(p.name for p in spec.params if p.required and p.name not in args)
     if missing:
         raise RejectedCall("missing_argument", tool, f"requires {missing}")
