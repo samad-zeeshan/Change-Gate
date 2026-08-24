@@ -117,7 +117,8 @@ def run_one_task(
 ) -> TaskOutcome:
     tenant_id = scenario.request.tenant_id
     repo = InMemoryRepository(tenant_id, audit_log=AuditLog())
-    service = ToolService(repo, FixedClock(seed.EVAL_NOW), principal=_principal_for(tenant_id, scenario.request.id))
+    principal = _principal_for(tenant_id, scenario.request.id)
+    service = ToolService(repo, FixedClock(seed.EVAL_NOW), principal=principal)
 
     latency = _LatencyAccumulator()
     inner = InProcessToolClient(service)

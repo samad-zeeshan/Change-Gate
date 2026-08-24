@@ -1,4 +1,4 @@
-"""Tests for request-bound credentials: tenant and request come from the token, never a tool argument."""
+"""Request-bound credentials: tenant and request come from the token, never an argument."""
 
 from __future__ import annotations
 

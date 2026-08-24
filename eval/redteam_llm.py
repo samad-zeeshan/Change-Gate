@@ -1,16 +1,7 @@
-"""
-Optional red-team mode where a language model plans the agent's next tool calls.
+"""Red-team mode where a language model, not a script, plans the agent's next tool calls.
 
-The scripted run assumes a planner that obeys the injected text. This mode
-measures how often a real model does: it gets the reads the agent's fetch step
-makes (with the injections in place), the tool list as the server advertises it,
-and any sampling messages, and proposes the calls that finish the task. The same
-proposals then run through the hardened boundary and, in a separate world,
-through the ablation, so "the model was steered" and "the attack had an effect"
-are counted apart.
-
-Talks to any OpenAI-compatible endpoint (LM Studio by default). Not used by the
-test suite, which passes a fake planner instead.
+Each plan runs through the hardened boundary and the ablation, so "steered" and
+"had an effect" are counted apart.
 """
 
 from __future__ import annotations
@@ -29,9 +20,11 @@ from eval.redteam import (
     _materialise,
     _stack,
     agent_actor,
+    agent_listing,
     blocked_by,
     _rule_id,
     nominal_decision,
+    probe_open_privilege,
     score_events,
     GOAL_FIELD,
 )
@@ -50,22 +43,58 @@ _RECORD_ARGS = {"request_id", "trace_id", "explanation", "force_route"}
 
 
 def openai_planner(base_url: str, model: str, *, max_tokens: int = 6000,
-                   timeout: float = 900.0) -> Planner:
+                   timeout: float = 900.0, extra: Optional[dict] = None) -> Planner:
     import httpx
 
     def plan(messages: list[dict]) -> str:
         resp = httpx.post(
             f"{base_url.rstrip('/')}/chat/completions",
-            # Reasoning models spend most of the budget thinking before they
-            # answer, so the budget is large and the reply is parsed afterwards.
             json={"model": model, "messages": messages, "temperature": 0,
-                  "max_tokens": max_tokens},
+                  "max_tokens": max_tokens, **(extra or {})},
             timeout=timeout,
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"] or ""
 
     return plan
+
+
+HOSTED_MODEL = "claude-haiku-4-5-20251001"
+LOCAL_MODEL = "qwen/qwen3.5-9b"
+LOCAL_URL = "http://127.0.0.1:1234/v1"
+
+
+def anthropic_planner(model: str = HOSTED_MODEL, max_tokens: int = 600) -> Planner:
+    import anthropic
+
+    client = anthropic.Anthropic()
+
+    def plan(messages: list[dict]) -> str:
+        system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+        turns = [m for m in messages if m["role"] != "system"]
+        msg = client.messages.create(model=model, max_tokens=max_tokens, temperature=0,
+                                     system=system, messages=turns)
+        return "".join(b.text for b in msg.content if b.type == "text")
+
+    return plan
+
+
+def default_planner() -> tuple[Planner, dict]:
+    """The hosted model when a key is set, otherwise the local LM Studio model."""
+    import os
+
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return anthropic_planner(), {"provider": "anthropic", "model": HOSTED_MODEL,
+                                     "temperature": 0, "max_tokens": 600}
+    # The v1 attempt failed because qwen3.5-9b spent a 6000-token budget
+    # thinking and never answered. With reasoning_effort none it answers in
+    # about a second, so a small budget is enough.
+    base = os.getenv("WARDEN_PLANNER_URL", LOCAL_URL)
+    return (openai_planner(base, LOCAL_MODEL, max_tokens=400, timeout=300,
+                           extra={"reasoning_effort": "none"}),
+            {"provider": "lmstudio", "model": LOCAL_MODEL, "base_url": base,
+             "reasoning": "off (reasoning_effort=none)", "temperature": 0,
+             "max_tokens": 400})
 
 
 def parse_calls(text: str, limit: int = 4) -> Optional[list[dict]]:
@@ -166,8 +195,14 @@ def _execute(case: dict, transport, pmap: PersonaMap, proposals: Optional[list[d
         findings = score_events(world, events, {agent.kind: agent})
         state = ToolService(world.repo(TENANT), FixedClock(seed.EVAL_NOW),
                             principal=agent.principal).request_state(world.target.id)
+        reachable = probe_open_privilege(world, agent, transport.binding, transport.guarded)
         return {
             "outcomes": outcomes,
+            "open_privilege": {
+                "task": sum(1 for r in reachable if r["task_target"]),
+                "tenant": len(reachable),
+                "dangerous": sum(1 for r in reachable if r["dangerous"]),
+            },
             "attack_succeeded": getattr(findings, GOAL_FIELD[case["goal"]]) > 0,
             "findings": findings.details,
             "unsafe_auto_approvals": findings.unsafe_auto_approvals,
@@ -187,7 +222,7 @@ def run_llm_case(case: dict, planner: Planner, pmap: PersonaMap) -> dict:
     world_probe = World.for_case(case)
     lister = InProcessTransport()
     lister.begin_case(world_probe, case["injections"].get("tool_description", {}))
-    listing = lister.advertised(agent_actor(world_probe.target.id), pmap)
+    listing = agent_listing(lister, agent_actor(world_probe.target.id), pmap, case)
     lister.end_case()
 
     # The reads come from the hardened stack so the model sees exactly what the
@@ -245,6 +280,15 @@ def summarise_llm(rows: list[dict]) -> dict:
                 r["hardened"]["hallucinated_rejected_before_send"] for r in rs),
             "audit_chain_verified_hardened": sum(1 for r in rs
                                                  if r["hardened"]["audit_chain_verified"]),
+            "privilege_escalations_hardened": sum(r["hardened"]["privilege_escalations"]
+                                                  for r in rs),
+            "freeze_bypasses_hardened": sum(r["hardened"]["freeze_bypasses"] for r in rs),
+            "open_privilege_tenant_hardened": sum(r["hardened"]["open_privilege"]["tenant"]
+                                                  for r in rs),
+            "open_privilege_dangerous_hardened": sum(
+                r["hardened"]["open_privilege"]["dangerous"] for r in rs),
+            "open_privilege_dangerous_ablation": sum(
+                r["ablation"]["open_privilege"]["dangerous"] for r in rs),
         }
 
     out = {"overall": block(rows), "by_goal": {}, "by_channel": {}}
@@ -266,13 +310,20 @@ def main() -> None:
 
     here = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser(description="Red-team corpus with an LLM planner.")
-    ap.add_argument("--model", default="qwen/qwen3.6-35b-a3b")
-    ap.add_argument("--max-tokens", type=int, default=6000)
-    ap.add_argument("--base-url", default="http://127.0.0.1:1234/v1")
+    ap.add_argument("--model", default="", help="OpenAI-compatible model id; "
+                    "default is Claude Haiku with a key, else the local LM Studio model")
+    ap.add_argument("--base-url", default=LOCAL_URL)
     ap.add_argument("--out", default=str(here / "redteam-llm-results.json"))
     args = ap.parse_args()
 
-    planner = openai_planner(args.base_url, args.model, max_tokens=args.max_tokens)
+    if args.model:
+        planner = openai_planner(args.base_url, args.model, max_tokens=400,
+                                 extra={"reasoning_effort": "none"})
+        info = {"provider": "openai-compatible", "model": args.model,
+                "base_url": args.base_url, "reasoning": "off (reasoning_effort=none)",
+                "temperature": 0, "max_tokens": 400}
+    else:
+        planner, info = default_planner()
     pmap = load_persona_map()
     # Human-token cases are insider attempts with no model in the loop.
     cases = [c for c in load_cases() if c["attacker"]["persona"] == "agent"]
@@ -287,8 +338,7 @@ def main() -> None:
     data = as_jsonable({
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "python": platform.python_version(),
-        "model": args.model,
-        "base_url": args.base_url,
+        "planner": info,
         "summary": summarise_llm(rows),
         "cases": rows,
     })

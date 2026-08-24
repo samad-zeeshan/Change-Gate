@@ -1,4 +1,7 @@
-"""MCP client for the agent: one streamable-HTTP session per tool call, errors mapped to the resilience types."""
+"""MCP client for the agent: one streamable-HTTP session per tool call.
+
+Transport errors map onto the resilience types so refusals are never retried.
+"""
 
 
 from __future__ import annotations

@@ -121,3 +121,18 @@ def test_run_case_restores_tool_descriptions():
     transport = InProcessTransport()
     run_case(CASES["uaa-td-02"], transport, load_persona_map())
     assert transport.overrides == {}
+
+
+def test_a_rogue_tool_is_reported_as_drift_and_never_sent():
+    r = _run("uaa-at-01")
+    assert any("fast_track_approve" in d and "not in the registry" in d for d in r["tool_drift"])
+    (call,) = r["steered_calls"]
+    assert call["hallucinated"] == "unknown_tool"
+    assert call["reached_server"] is False
+    assert r["attack_succeeded"] is False
+
+
+def test_a_manipulated_risk_result_does_not_move_the_decision():
+    r = _run("uaa-mn-01")
+    assert r["agent_terminal_decision"] == r["nominal_decision"] == "route"
+    assert r["attack_succeeded"] is False

@@ -88,3 +88,32 @@ def test_a_planner_outage_is_recorded_not_fatal():
     row = run_llm_case(CASES["wtr-rp-01"], broken, load_persona_map())
     assert "ConnectionError" in row["planner_error"]
     assert row["reply_parsed"] is False
+
+
+def test_default_planner_uses_the_local_model_without_an_api_key(monkeypatch):
+    from eval.redteam_llm import LOCAL_MODEL, default_planner
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _, info = default_planner()
+    assert info["provider"] == "lmstudio" and info["model"] == LOCAL_MODEL
+    assert "off" in info["reasoning"]
+
+
+def test_default_planner_prefers_the_hosted_model_with_a_key(monkeypatch):
+    pytest = __import__("pytest")
+    pytest.importorskip("anthropic")
+    from eval.redteam_llm import HOSTED_MODEL, default_planner
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    _, info = default_planner()
+    assert info == {"provider": "anthropic", "model": HOSTED_MODEL, "temperature": 0,
+                    "max_tokens": 600}
+
+
+def test_llm_rows_report_open_privilege_after_the_plan_runs():
+    case = CASES["uaa-rp-01"]
+    plan, _ = _fake(json.dumps([{"tool": "record_decision", "args": {}}]))
+    row = run_llm_case(case, plan, load_persona_map())
+    op = row["hardened"]["open_privilege"]
+    assert op == {"task": 0, "tenant": 0, "dangerous": 0}
+    assert row["ablation"]["open_privilege"]["tenant"] > 0

@@ -1,6 +1,7 @@
 """The MCP server: token checks, the tool boundary, and the task credential exchange.
 
-Tools are built from the pinned registry, so what the server advertises is what the agent side checks.
+Tools are built from the pinned registry, so the server advertises exactly what
+the agent side checks.
 """
 
 from __future__ import annotations

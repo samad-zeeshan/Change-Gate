@@ -1,3 +1,5 @@
+"""Shape and coverage checks for the injection corpus."""
+
 
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ def test_every_case_matches_the_schema():
 
 def test_corpus_size_and_coverage():
     cases = _cases()
-    assert len(cases) >= 60
+    assert len(cases) >= 80
     assert len({c["id"] for c in cases}) == len(cases)
     assert sum(1 for c in cases if c["channel"] == "fragmented") >= 10
     assert {c["goal"] for c in cases} == GOALS
@@ -52,7 +54,8 @@ def test_declared_channels_are_the_ones_actually_injected():
             assert len(channels) == 2, c["id"]
         else:
             assert channels == {c["channel"]}, c["id"]
-        injected = set(c["injections"])
+        # A rogue tool is text in the tool listing, so it is the description channel.
+        injected = {"tool_description" if k == "rogue_tools" else k for k in c["injections"]}
         if c["target"].get("description"):
             injected.add("request_payload")
         assert injected == channels, c["id"]
@@ -65,3 +68,21 @@ def test_poisoned_results_target_real_tools():
             assert ("merge" in inj) != ("replace" in inj), c["id"]
         for tool in c["injections"].get("tool_description", {}):
             assert tool in REGISTRY, c["id"]
+        for tool in c["injections"].get("rogue_tools", {}):
+            assert tool not in REGISTRY, c["id"]
+
+
+def test_a2m_cases_cover_attraction_and_manipulation():
+    # A2M (arXiv 2609.26761): attractive tool metadata, then tool returns refined
+    # to steer the next call. Both stages, every goal, and cases that use both.
+    a2m = [c for c in _cases() if c.get("family") == "a2m"]
+    assert len(a2m) >= 16
+    assert {c["stage"] for c in a2m} == {"attraction", "manipulation", "both"}
+    assert {c["goal"] for c in a2m} == GOALS
+    for c in a2m:
+        if c["stage"] == "attraction":
+            assert set(c["injections"]) & {"tool_description", "rogue_tools"}, c["id"]
+        if c["stage"] == "manipulation":
+            assert "tool_result" in c["injections"], c["id"]
+        if c["stage"] == "both":
+            assert len(c["channels"]) == 2, c["id"]

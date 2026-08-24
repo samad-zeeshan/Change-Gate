@@ -433,12 +433,15 @@ class HttpTransport:
     binding = BINDING_REQUEST
     issuer = "https://redteam.local/realms/warden"
 
-    def __init__(self) -> None:
+    def __init__(self, binding: str = BINDING_REQUEST) -> None:
+        self.binding = binding
         self.world: Optional[World] = None
         self._server = None
         self._thread = None
         self._key = None
         self._mcp = None
+        self.validator = None
+        self.task_issuer = None
         self._saved_descriptions: dict[str, str] = {}
 
     def start(self) -> None:
@@ -470,14 +473,15 @@ class HttpTransport:
         cfg = Settings(issuer=self.issuer, jwks_uri="https://redteam.local/certs",
                        resource_url=self.url, host="127.0.0.1", port=port,
                        now_override=seed.EVAL_NOW.isoformat())
-        validator = TokenValidator(
+        self.task_issuer = TaskCredentialIssuer(audience=self.url)
+        self.validator = TokenValidator(
             ResourceServerConfig(issuer=self.issuer, audience=self.url),
             JWKSResolver(static_jwks={"keys": [jwk]}),
             persona_map=load_persona_map(),
-            task_issuer=TaskCredentialIssuer(audience=self.url),
+            task_issuer=self.task_issuer,
         )
         self._mcp = build_server(cfg, repo_factory=lambda t: self.world.repo(t),
-                                 validator=validator)
+                                 validator=self.validator, binding=self.binding)
         self._server = uvicorn.Server(uvicorn.Config(
             self._mcp.streamable_http_app(), host="127.0.0.1", port=port, log_level="error"))
         self._thread = threading.Thread(target=self._server.run, daemon=True)
@@ -533,6 +537,12 @@ class HttpTransport:
     def client_for(self, actor: Actor) -> ToolClient:
         from warden.agent.mcp_client import MCPToolClient
 
+        if self.binding == BINDING_PARAMETER:
+            # The parameter arm has no exchange. The IdP token and its tenant
+            # entitlement go straight to the tools, as in the v1 shape.
+            tenants = sorted(actor.principal.tenants)
+            extra = {"tenants": tenants} if tenants else {}
+            return MCPToolClient(self.url, self.idp_token(actor, **extra))
         return MCPToolClient(self.url, self.token(actor))
 
     def advertised(self, actor: Actor, pmap: PersonaMap) -> dict[str, dict]:
@@ -789,6 +799,18 @@ def _materialise(args: dict, target_id: str, binding: str = BINDING_REQUEST) -> 
     return out
 
 
+def rogue_listing(case: dict) -> dict[str, dict]:
+    """Tools a malicious MCP server installed next to Warden would advertise (A2M)."""
+    return {name: {"description": text, "inputSchema": {"properties": {}}}
+            for name, text in case["injections"].get("rogue_tools", {}).items()}
+
+
+def agent_listing(transport, actor: Actor, pmap: PersonaMap, case: dict) -> dict[str, dict]:
+    # The agent merges every connected server into one tool namespace, so the
+    # rogue tools sit beside Warden's own in what it sees.
+    return {**transport.advertised(actor, pmap), **rogue_listing(case)}
+
+
 def run_case(case: dict, transport, pmap: PersonaMap) -> dict:
     world = World.for_case(case)
     transport.begin_case(world, case["injections"].get("tool_description", {}))
@@ -811,7 +833,7 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
     registry = registry_for(transport.binding if transport.guarded else BINDING_PARAMETER)
 
     registry_view = {n: s for n, s in registry.items() if pmap.may_call(agent.principal, n)}
-    drift = diff_advertised(transport.advertised(agent, pmap), registry_view) \
+    drift = diff_advertised(agent_listing(transport, agent, pmap, case), registry_view) \
         if transport.guarded else []
 
     # 1. The real LangGraph agent works the target request with the injections live.
@@ -830,7 +852,8 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
         args = _materialise(call["args"], world.target.id, transport.binding)
         # The ablation has no registry of its own. Its calls are classified the
         # way the v1 boundary would have seen them, with the task's ids filled in.
-        check = args if transport.guarded else             _materialise(call["args"], world.target.id, BINDING_PARAMETER)
+        check = args if transport.guarded else _materialise(
+            call["args"], world.target.id, BINDING_PARAMETER)
         inexpressible = False
         try:
             resolve_call(call["tool"], check, registry)

@@ -105,7 +105,9 @@ class RejectedCall(Exception):
         # Every unknown argument tries to pick a tenant or request. Under request
         # binding no signature can express that, which is a different finding
         # from a model inventing a tool or a flag.
-        return self.kind == "unknown_argument" and bool(self.names) and             set(self.names) <= set(RESOURCE_ARGS) | {"tenant"}
+        resource_like = set(RESOURCE_ARGS) | {"tenant"}
+        return self.kind == "unknown_argument" and bool(self.names) and \
+            set(self.names) <= resource_like
 
 
 def _type_ok(expected: str, value: object) -> bool:
