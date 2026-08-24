@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-25.1",
+  "version": "2026-09-25.2",
   "personas": {
     "agent": {
       "clients": ["warden-agent", "warden-agent-base"],
@@ -27,7 +27,15 @@
     "record_decision": {"writes": true, "roles": ["recorder"]},
     "route_change": {"writes": true, "roles": ["router"]},
     "approve_change": {"writes": true, "roles": ["approver"]},
-    "deny_change": {"writes": true, "roles": ["approver"]}
+    "deny_change": {"writes": true, "roles": ["approver"]},
+    "list_roles": {"writes": false, "roles": ["catalog"]},
+    "learn_role": {"writes": false, "roles": ["catalog"]}
+  },
+  "role_delivery": {
+    "agent": {
+      "learnable": ["reader", "recorder"],
+      "requires": {"recorder": ["assess_change_risk"]}
+    }
   },
   "rules": [
     {

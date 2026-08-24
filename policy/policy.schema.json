@@ -4,34 +4,67 @@
   "title": "Warden action policy",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "personas", "tools", "rules", "default"],
+  "required": [
+    "version",
+    "personas",
+    "tools",
+    "rules",
+    "default"
+  ],
   "properties": {
-    "version": {"type": "string", "minLength": 1},
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
     "personas": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["agent", "human"],
+      "required": [
+        "agent",
+        "human"
+      ],
       "properties": {
         "agent": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["clients", "roles"],
+          "required": [
+            "clients",
+            "roles"
+          ],
           "properties": {
-            "clients": {"$ref": "#/$defs/names"},
-            "roles": {"$ref": "#/$defs/names"}
+            "clients": {
+              "$ref": "#/$defs/names"
+            },
+            "roles": {
+              "$ref": "#/$defs/names"
+            }
           }
         },
         "human": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["clients", "base_roles", "role_claim", "role_map"],
+          "required": [
+            "clients",
+            "base_roles",
+            "role_claim",
+            "role_map"
+          ],
           "properties": {
-            "clients": {"$ref": "#/$defs/names"},
-            "base_roles": {"$ref": "#/$defs/names"},
-            "role_claim": {"type": "string", "minLength": 1},
+            "clients": {
+              "$ref": "#/$defs/names"
+            },
+            "base_roles": {
+              "$ref": "#/$defs/names"
+            },
+            "role_claim": {
+              "type": "string",
+              "minLength": 1
+            },
             "role_map": {
               "type": "object",
-              "additionalProperties": {"$ref": "#/$defs/names"}
+              "additionalProperties": {
+                "$ref": "#/$defs/names"
+              }
             }
           }
         }
@@ -43,10 +76,17 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["writes", "roles"],
+        "required": [
+          "writes",
+          "roles"
+        ],
         "properties": {
-          "writes": {"type": "boolean"},
-          "roles": {"$ref": "#/$defs/names"}
+          "writes": {
+            "type": "boolean"
+          },
+          "roles": {
+            "$ref": "#/$defs/names"
+          }
         }
       }
     },
@@ -55,52 +95,129 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "effect", "when", "reason"],
+        "required": [
+          "id",
+          "effect",
+          "when",
+          "reason"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "effect": {"enum": ["allow", "deny"]},
-          "reason": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "effect": {
+            "enum": [
+              "allow",
+              "deny"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
           "when": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "tool": {"$ref": "#/$defs/text_condition"},
-              "action": {"$ref": "#/$defs/text_condition"},
-              "persona": {"$ref": "#/$defs/text_condition"},
-              "environment": {"$ref": "#/$defs/text_condition"},
-              "state": {"$ref": "#/$defs/text_condition"},
-              "tenant_match": {"type": "boolean"},
-              "freeze_active": {"type": "boolean"},
-              "request_valid": {"type": "boolean"},
-              "self_approval": {"type": "boolean"}
+              "tool": {
+                "$ref": "#/$defs/text_condition"
+              },
+              "action": {
+                "$ref": "#/$defs/text_condition"
+              },
+              "persona": {
+                "$ref": "#/$defs/text_condition"
+              },
+              "environment": {
+                "$ref": "#/$defs/text_condition"
+              },
+              "state": {
+                "$ref": "#/$defs/text_condition"
+              },
+              "tenant_match": {
+                "type": "boolean"
+              },
+              "freeze_active": {
+                "type": "boolean"
+              },
+              "request_valid": {
+                "type": "boolean"
+              },
+              "self_approval": {
+                "type": "boolean"
+              }
             }
           }
         }
       }
     },
-    "default": {"enum": ["allow", "deny"]}
+    "default": {
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "role_delivery": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "learnable"
+        ],
+        "properties": {
+          "learnable": {
+            "$ref": "#/$defs/names"
+          },
+          "requires": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/names"
+            }
+          }
+        }
+      }
+    }
   },
   "$defs": {
     "text_condition": {
       "oneOf": [
-        {"type": "string"},
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["in"],
-          "properties": {"in": {"$ref": "#/$defs/names"}}
+          "type": "string"
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["not_in"],
-          "properties": {"not_in": {"$ref": "#/$defs/names"}}
+          "required": [
+            "in"
+          ],
+          "properties": {
+            "in": {
+              "$ref": "#/$defs/names"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "not_in"
+          ],
+          "properties": {
+            "not_in": {
+              "$ref": "#/$defs/names"
+            }
+          }
         }
       ]
     },
     "names": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     }
   }

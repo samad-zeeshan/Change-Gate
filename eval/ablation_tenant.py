@@ -160,7 +160,8 @@ class AblationContext:
     def start(self) -> None:
         if "http" in self.transports:
             for arm, binding in BINDING.items():
-                t = HttpTransport(binding=binding)
+                # Delivery is off in both arms so binding is the only variable.
+                t = HttpTransport(binding=binding, role_delivery=False)
                 t.start()
                 self.http[arm] = t
 
@@ -196,7 +197,7 @@ def _client(arm: str, transport: str, pretext: dict, world: World, ctx: Ablation
         http.world = world
         inner = http.client_for(actor)
     else:
-        inner = in_process_client(world, actor, binding)
+        inner = in_process_client(world, actor, binding, role_delivery=False)
     return ResolvingToolClient(inner, registry=registry_for(binding))
 
 
@@ -322,7 +323,7 @@ def run_forgery(technique: str, transport: str, pretext: dict, ctx: AblationCont
             return {**row, "served": False, "blocked_by": "token_validation"}
         service = ToolService(world.repo(principal.tenant_id), FixedClock(seed.EVAL_NOW),
                               principal=principal)
-        client = ResolvingToolClient(InProcessToolClient(service))
+        client = ResolvingToolClient(InProcessToolClient(service, role_delivery=False))
     out = _attempt(client, tool, args, pretext)
     blocked = out["blocked_by"]
     if blocked == "other" and ("401" in out.get("error", "") or "invalid_token" in
@@ -333,7 +334,8 @@ def run_forgery(technique: str, transport: str, pretext: dict, ctx: AblationCont
 
 def _reads(pretext: dict, world: World) -> list[tuple]:
     actor = _actor("credential", pretext)
-    client = ResultInjector(in_process_client(world, actor, BINDING_REQUEST),
+    client = ResultInjector(in_process_client(world, actor, BINDING_REQUEST,
+                                              role_delivery=False),
                             pretext["case"]["injections"].get("tool_result", []))
     seen = []
     for tool in ("get_change_request", "get_change_policy", "get_dependency_graph",

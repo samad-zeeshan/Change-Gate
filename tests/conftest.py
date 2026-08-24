@@ -69,3 +69,21 @@ def bound_service(acme_repo, clock, elevated_principal):
         return ToolService(acme_repo, clock, principal=bound)
 
     return make
+
+
+def walk_to_decide(client) -> None:
+    """The agent's delivery protocol up to the write: reader, assess, recorder."""
+    client.call("learn_role", role="reader")
+    client.call("assess_change_risk")
+    client.call("learn_role", role="recorder")
+
+
+async def walk_server_to_decide(server) -> None:
+    await server.call_tool("learn_role", {"role": "reader"})
+    await server.call_tool("assess_change_risk", {})
+    await server.call_tool("learn_role", {"role": "recorder"})
+
+
+def decisions(entries) -> list[str]:
+    # Role grants are audited too. Most tests care about everything else.
+    return [e.action for e in entries if e.action != "role_learned"]

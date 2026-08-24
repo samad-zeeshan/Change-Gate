@@ -26,6 +26,8 @@ from warden.tool_registry import (
 )
 from warden.tools import ToolService
 
+from conftest import decisions, walk_server_to_decide
+
 _JSON_TYPE = {"string": "string", "boolean": "boolean"}
 
 
@@ -199,11 +201,12 @@ def test_cross_tenant_read_looks_like_not_found_and_is_audited(globex_repo, cloc
     # Even a credential somehow bound to another tenant's request finds nothing.
     principal = AuthPrincipal("agent-globex", "globex", "lead", request_id="cr-001")
     client = InProcessToolClient(ToolService(globex_repo, clock, principal=principal))
+    client.call("learn_role", role="reader")
     with pytest.raises(DomainToolError) as exc:
         client.call("get_change_request")
     assert "not found" in str(exc.value)
     rows = audit_log.for_tenant("globex")
-    assert [r.action for r in rows] == ["cross_tenant_denied"]
+    assert decisions(rows) == ["cross_tenant_denied"]
     assert audit_log.for_tenant("acme") == []
 
 
@@ -236,16 +239,18 @@ async def test_server_rejects_an_unknown_tool_and_audits_it(acme_repo, elevated_
 async def test_server_enforces_tool_roles_at_call_time(acme_repo, elevated_principal,
                                                        audit_log):
     server = _gated_server(acme_repo, elevated_principal, "cr-002")
+    await walk_server_to_decide(server)
     await server.call_tool("record_decision", {"trace_id": "t1"})
     with pytest.raises(Exception):
         await server.call_tool("approve_change", {})
-    actions = [e.action for e in audit_log.for_tenant("acme")]
+    actions = decisions(audit_log.for_tenant("acme"))
     assert actions == ["record_decision", "tool_denied"]
 
 
 async def test_server_lets_a_human_approver_approve(acme_repo, elevated_principal, audit_log):
-    await _gated_server(acme_repo, elevated_principal, "cr-005").call_tool(
-        "record_decision", {})
+    agent = _gated_server(acme_repo, elevated_principal, "cr-005")
+    await walk_server_to_decide(agent)
+    await agent.call_tool("record_decision", {})
     human = AuthPrincipal("alice", "acme", "lead", elevated_principal.scopes,
                           persona=PERSONA_HUMAN, gate_roles=frozenset({"approver"}))
     await _gated_server(acme_repo, human, "cr-005").call_tool(
@@ -255,7 +260,9 @@ async def test_server_lets_a_human_approver_approve(acme_repo, elevated_principa
 
 
 async def test_tool_listing_only_shows_what_the_caller_may_call(acme_repo, elevated_principal):
-    names = {t.name for t in await _gated_server(acme_repo, elevated_principal).list_tools()}
+    server = _gated_server(acme_repo, elevated_principal)
+    await walk_server_to_decide(server)
+    names = {t.name for t in await server.list_tools()}
     assert "record_decision" in names
     assert "approve_change" not in names and "deny_change" not in names
 

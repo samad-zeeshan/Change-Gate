@@ -13,11 +13,12 @@ from ..tools import ToolError, ToolService
 class InProcessToolClient:
 
     def __init__(self, service: ToolService, *, binding: str = BINDING_REQUEST,
-                 tenant_service=None) -> None:
+                 tenant_service=None, sessions=None, role_delivery: bool = True) -> None:
         self._service = service
         # Offline calls cross the same boundary an MCP call does: resolution
         # against the registry, then the caller's roles, then the tool.
-        self._boundary = ToolBoundary(service, binding=binding, tenant_service=tenant_service)
+        self._boundary = ToolBoundary(service, binding=binding, tenant_service=tenant_service,
+                                      sessions=sessions, role_delivery=role_delivery)
 
     def call(self, tool: str, **kwargs) -> dict:
         try:

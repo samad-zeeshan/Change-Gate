@@ -175,11 +175,18 @@ def _execute(case: dict, transport, pmap: PersonaMap, proposals: Optional[list[d
         agent = agent_actor(world.target.id)
         client = _stack(transport, agent, lambda: world, events, lambda: "llm", case, stats)
         seen = []
+        # The workflow up to the decide step: learn reader, read, assess, learn
+        # recorder. The model plans from there, as the deterministic agent would.
+        client.call("learn_role", role="reader")
         for tool, args in _reads(world.target.id):
             try:
                 seen.append((tool, args, client.call(tool, **args)))
             except Exception as exc:  # noqa: BLE001
                 seen.append((tool, args, {"error": str(exc)}))
+        try:
+            client.call("learn_role", role="recorder")
+        except Exception:  # noqa: BLE001 - a refused role shows up in the plan's outcome
+            pass
         outcomes = []
         for call in proposals or []:
             args = call["args"] if isinstance(call["args"], dict) else {}
@@ -195,7 +202,8 @@ def _execute(case: dict, transport, pmap: PersonaMap, proposals: Optional[list[d
         findings = score_events(world, events, {agent.kind: agent})
         state = ToolService(world.repo(TENANT), FixedClock(seed.EVAL_NOW),
                             principal=agent.principal).request_state(world.target.id)
-        reachable = probe_open_privilege(world, agent, transport.binding, transport.guarded)
+        reachable = probe_open_privilege(world, agent, transport.binding, transport.guarded,
+                                         getattr(transport, "role_delivery", False))
         return {
             "outcomes": outcomes,
             "open_privilege": {

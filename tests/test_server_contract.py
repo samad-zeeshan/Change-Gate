@@ -16,6 +16,8 @@ from warden.config import Settings
 from warden.data import seed
 from warden.server import app as server_app
 
+from conftest import decisions, walk_server_to_decide
+
 
 def _server():
     cfg = Settings(
@@ -73,6 +75,7 @@ async def test_record_decision_over_mcp_keeps_trace_id(monkeypatch, acme_repo,
     monkeypatch.setattr(server_app, "_principal_from_context", lambda: bound)
     server = _server()
 
+    await walk_server_to_decide(server)
     await server.call_tool("record_decision", {"trace_id": "t-mcp-1"})
 
     entry = audit_log.for_tenant("acme")[-1]
@@ -92,9 +95,10 @@ async def test_server_audits_a_write_refused_for_a_missing_scope(acme_repo, audi
                  now_override=seed.EVAL_NOW.isoformat()),
         repo_factory=lambda tenant: acme_repo, principal_provider=lambda: read_only,
     )
+    await walk_server_to_decide(server)
     with pytest.raises(Exception):
         await server.call_tool("record_decision", {})
-    rows = audit_log.for_tenant("acme")
-    assert [r.action for r in rows] == ["scope_denied"]
+    rows = [r for r in audit_log.for_tenant("acme") if r.action != "role_learned"]
+    assert decisions(rows) == ["scope_denied"]
     assert rows[0].request_id == "cr-002"
     assert "change:approve" in rows[0].reason

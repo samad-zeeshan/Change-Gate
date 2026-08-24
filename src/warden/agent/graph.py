@@ -45,6 +45,14 @@ def node_fetch(state: AgentState, config: RunnableConfig) -> dict:
         }
         degraded = bool(state.get("degraded"))
         notes = list(state.get("notes", []))
+        # The credential starts with the role catalog only. Without reader every
+        # read below is refused, so a failure here ends the run.
+        try:
+            deps.client.call("learn_role", role="reader")
+        except (ToolUnavailable, DomainToolError) as exc:
+            sp.set("outcome", "failed")
+            return {"failed": True, "error": f"could not learn reader: {exc}",
+                    "notes": _note(state, f"learn_role reader failed: {exc}")}
         for key, (tool, kwargs, critical) in reads.items():
             try:
                 out[key] = deps.client.call(tool, **kwargs)
@@ -118,6 +126,9 @@ def node_decide(state: AgentState, config: RunnableConfig) -> dict:
     with telemetry.span("agent.decide", tool="record_decision", request_id=rid,
                         degraded=degraded) as sp:
         try:
+            # The write role arrives only now, after the risk was assessed in this
+            # session. The server refuses it any earlier.
+            deps.client.call("learn_role", role="recorder")
             # force_route carries the degraded flag downstream. If we ran on
             # incomplete context, an auto-approve gets bumped to a human route
             # instead of silently shipping on partial data.

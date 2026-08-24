@@ -24,6 +24,7 @@ from ..credentials import CredentialRefused, TaskCredentialIssuer, exchange_for_
 from ..db.postgres_repository import connect
 from ..db.repository import Repository
 from ..personas import load_persona_map
+from ..sessions import RoleSessions
 from ..security import (
     BINDING_REQUEST,
     PERSONA_UNKNOWN,
@@ -124,6 +125,8 @@ def build_server(
     validator: TokenValidator | None = None,
     task_issuer: TaskCredentialIssuer | None = None,
     binding: str = BINDING_REQUEST,
+    sessions_provider: Callable[[], RoleSessions] | None = None,
+    role_delivery: bool = True,
 ) -> FastMCP:
     # The keyword arguments exist so the red-team runner and the tests can run
     # this exact server without Postgres or Keycloak. Production passes none.
@@ -151,6 +154,13 @@ def build_server(
         else SystemClock()
     )
 
+    # Learned roles have to outlive one MCP session, because the agent opens a new
+    # session per call. They live here, keyed by the task credential's id.
+    shared_sessions = RoleSessions()
+
+    def _sessions() -> RoleSessions:
+        return sessions_provider() if sessions_provider else shared_sessions
+
     def _principal() -> AuthPrincipal:
         return principal_provider() if principal_provider else _principal_from_context()
 
@@ -167,14 +177,17 @@ def build_server(
             return ToolService(_repo(tenant), clock, principal=scoped)
 
         service = ToolService(_repo(principal.tenant_id), clock, principal=principal)
-        return ToolBoundary(service, persona_map, binding=binding, tenant_service=for_tenant)
+        return ToolBoundary(service, persona_map, binding=binding, tenant_service=for_tenant,
+                            sessions=_sessions(), role_delivery=role_delivery)
 
     def _gate(name: str, arguments: dict) -> None:
         _boundary().admit(name, arguments)
 
     def _visible(name: str) -> bool:
         try:
-            return persona_map.may_call(_principal(), name)
+            principal = _principal()
+            learned = _sessions().learned(principal) if role_delivery else None
+            return persona_map.may_call(principal, name, learned)
         except AuthorizationError:
             return False
 

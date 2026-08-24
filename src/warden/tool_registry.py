@@ -70,6 +70,9 @@ REGISTRY: dict[str, ToolSpec] = {
                  _HUMAN_SIDE, writes=True, request_scoped=True),
         ToolSpec("deny_change", "Human denial of the routed request.", _HUMAN_SIDE,
                  writes=True, request_scoped=True),
+        ToolSpec("list_roles", "List the roles this credential may learn and what each holds."),
+        ToolSpec("learn_role", "Learn one role and receive its tools for this task.",
+                 (Param("role", "string", True),)),
     )
 }
 

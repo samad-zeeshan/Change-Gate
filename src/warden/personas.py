@@ -15,6 +15,9 @@ from typing import Mapping, Optional
 from .policy import default_policy_path, load_policy_document
 from .security import PERSONA_AGENT, PERSONA_HUMAN, PERSONA_UNKNOWN, AuthPrincipal
 
+# Every known persona holds this role. It carries only list_roles and learn_role.
+CATALOG_ROLE = "catalog"
+
 
 @dataclass(frozen=True)
 class PersonaMap:
@@ -25,6 +28,8 @@ class PersonaMap:
     human_role_claim: str
     human_role_map: Mapping[str, frozenset[str]]
     tool_roles: Mapping[str, frozenset[str]]
+    learnable: Mapping[str, frozenset[str]] = None
+    requires: Mapping[str, frozenset[str]] = None
 
     @classmethod
     def from_policy(cls, doc: dict) -> "PersonaMap":
@@ -45,6 +50,11 @@ class PersonaMap:
             human_role_claim=human["role_claim"],
             human_role_map={k: frozenset(v) for k, v in human["role_map"].items()},
             tool_roles={k: frozenset(v["roles"]) for k, v in doc["tools"].items()},
+            learnable={p: frozenset(cfg["learnable"])
+                       for p, cfg in doc.get("role_delivery", {}).items()},
+            requires={r: frozenset(tools)
+                      for cfg in doc.get("role_delivery", {}).values()
+                      for r, tools in cfg.get("requires", {}).items()},
         )
 
     def resolve(self, claims: dict) -> tuple[str, frozenset[str]]:
@@ -69,7 +79,7 @@ class PersonaMap:
             out |= self.human_role_map.get(name, frozenset())
         return frozenset(out)
 
-    def roles_for(self, principal: AuthPrincipal) -> frozenset[str]:
+    def entitled(self, principal: AuthPrincipal) -> frozenset[str]:
         if principal.persona == PERSONA_AGENT:
             return self.agent_roles
         if principal.persona == PERSONA_HUMAN:
@@ -77,11 +87,33 @@ class PersonaMap:
             return self.human_base_roles | (principal.gate_roles & grantable)
         return frozenset()
 
-    def may_call(self, principal: AuthPrincipal, tool: str) -> bool:
+    def delivers(self, principal: AuthPrincipal) -> bool:
+        return principal.persona in (self.learnable or {})
+
+    def learnable_for(self, principal: AuthPrincipal) -> frozenset[str]:
+        listed = (self.learnable or {}).get(principal.persona, frozenset())
+        return listed & self.entitled(principal)
+
+    def roles_for(self, principal: AuthPrincipal,
+                  learned: Optional[frozenset[str]] = None) -> frozenset[str]:
+        entitled = self.entitled(principal)
+        if learned is not None and self.delivers(principal):
+            # Under delivery only learned roles count, and only those the policy
+            # lets this persona learn. The entitlement stays the ceiling.
+            return learned & self.learnable_for(principal)
+        return entitled
+
+    def may_call(self, principal: AuthPrincipal, tool: str,
+                 learned: Optional[frozenset[str]] = None) -> bool:
         allowed = self.tool_roles.get(tool)
         if not allowed:
             return False
-        return bool(self.roles_for(principal) & allowed)
+        if CATALOG_ROLE in allowed and self.entitled(principal):
+            return True
+        return bool(self.roles_for(principal, learned) & allowed)
+
+    def tools_of(self, role: str) -> list[str]:
+        return sorted(t for t, roles in self.tool_roles.items() if role in roles)
 
 
 @lru_cache(maxsize=8)

@@ -31,6 +31,8 @@ from warden.server.auth import InvalidToken, JWKSResolver, ResourceServerConfig,
 from warden.tool_registry import REGISTRY, RESOURCE_ARGS, RejectedCall, registry_for, resolve_call
 from warden.tools import ToolService
 
+from conftest import walk_server_to_decide, walk_to_decide
+
 ISSUER = "https://idp.example/realms/warden"
 AUDIENCE = "https://mcp.warden.example/mcp"
 SCOPES = frozenset({SCOPE_READ, SCOPE_APPROVE, SCOPE_APPROVE_PROD})
@@ -174,6 +176,7 @@ def test_an_unbound_credential_can_call_nothing_and_is_audited(acme_repo, clock,
 
 def test_a_bound_credential_reads_and_decides_its_own_request(acme_repo, clock, audit_log):
     client = InProcessToolClient(ToolService(acme_repo, clock, principal=_bound("cr-002")))
+    walk_to_decide(client)
     assert client.call("get_change_request")["id"] == "cr-002"
     assert client.call("get_config_state")["key"] == "db_pool_size"
     out = client.call("record_decision", trace_id="t")
@@ -182,6 +185,7 @@ def test_a_bound_credential_reads_and_decides_its_own_request(acme_repo, clock, 
 
 def test_no_signature_can_reach_another_request(acme_repo, clock, audit_log):
     client = InProcessToolClient(ToolService(acme_repo, clock, principal=_bound("cr-002")))
+    walk_to_decide(client)
     with pytest.raises(DomainToolError) as exc:
         client.call("record_decision", request_id="cr-001")
     assert "unknown_argument" in str(exc.value)
@@ -213,14 +217,15 @@ def test_parameter_arm_serves_any_entitled_tenant(audit_log, clock):
         return ToolService(repos[tenant], clock, principal=dataclasses.replace(
             shared, tenant_id=tenant))
 
+    # The parameter arm is the v1 shape, which had no role delivery.
     boundary = ToolBoundary(service_for("acme"), load_persona_map(), binding="parameter",
-                            tenant_service=service_for)
+                            tenant_service=service_for, role_delivery=False)
     out = boundary.call("get_change_request", {"tenant_id": "globex", "request_id": "gx-1"})
     assert out["tenant_id"] == "globex"
 
     single = ToolBoundary(ToolService(repos["acme"], clock, principal=dataclasses.replace(
         shared, tenants=frozenset({"acme"}))), load_persona_map(), binding="parameter",
-        tenant_service=service_for)
+        tenant_service=service_for, role_delivery=False)
     with pytest.raises(ToolDenied):
         single.call("get_change_request", {"tenant_id": "globex", "request_id": "gx-1"})
 
@@ -242,6 +247,7 @@ def test_the_server_advertises_no_resource_ids():
 async def test_the_server_derives_the_request_from_the_credential(acme_repo, audit_log):
     server = server_app.build_server(_cfg(), repo_factory=lambda t: acme_repo,
                                      principal_provider=lambda: _bound("cr-005"))
+    await walk_server_to_decide(server)
     await server.call_tool("record_decision", {"trace_id": "t-srv"})
     entry = audit_log.for_tenant("acme")[-1]
     assert entry.request_id == "cr-005" and entry.action == "record_decision"
