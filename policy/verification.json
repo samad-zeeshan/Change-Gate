@@ -1,0 +1,13 @@
+{
+  "verifier_version": "1",
+  "z3_version": "5.1.0",
+  "old_version": "2026-09-25.2",
+  "new_version": "2026-09-25.3",
+  "old_sha256": "ec15afc105da5c2bb36d7b54cfdfd5e8dcfb30fb386ae7984dcdbff7f2edd710",
+  "new_sha256": "22796b63e1f39e0f017c1292b7603c960ceb51cd0420ad91395c63fec08489d0",
+  "approved_new_allows": [],
+  "listed_and_found": [],
+  "unlisted_new_allows": [],
+  "result": "pass",
+  "output_hash": "546a985d75caa9cd6a2060bbb37027a414e4c013f3972927ba310362240fe772"
+}

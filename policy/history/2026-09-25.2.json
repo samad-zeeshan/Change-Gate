@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-25.3",
+  "version": "2026-09-25.2",
   "personas": {
     "agent": {
       "clients": ["warden-agent", "warden-agent-base"],
@@ -79,12 +79,6 @@
       "effect": "deny",
       "when": {"action": "approve", "self_approval": true},
       "reason": "the requester may not approve their own change"
-    },
-    {
-      "id": "no-self-denial",
-      "effect": "deny",
-      "when": {"tool": "deny_change", "self_approval": true},
-      "reason": "the requester may not decide their own change, in either direction"
     },
     {
       "id": "record-needs-new",

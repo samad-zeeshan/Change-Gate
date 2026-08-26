@@ -13,6 +13,7 @@ opentelemetry-sdk>=1.25
 opentelemetry-exporter-otlp-proto-http>=1.25
 
 anthropic>=0.40
+z3-solver==5.1.0.0
 matplotlib>=3.8
 
 pytest>=8

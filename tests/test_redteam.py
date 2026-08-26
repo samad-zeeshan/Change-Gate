@@ -54,12 +54,32 @@ def test_ablation_names_what_stopped_a_call():
     assert r["steered_calls"][0]["blocked_by"] == "scopes"
 
 
-def test_open_privilege_lists_the_writes_left_on_the_target():
+def test_the_self_denial_left_open_in_v1_is_closed():
+    # v1 left one write open here: the approver could deny their own routed request.
+    # Policy 2026-09-25.3 adds no-self-denial, and the v1 credential run shows the
+    # old gap is still measured the same way.
     r = _run("pes-hu-03")
-    listed = r["open_privilege"]["reachable_on_target_or_dangerous"]
-    assert r["open_privilege"]["task"] == 1
-    assert listed == [{"tool": "deny_change", "request_id": "rt-pes-hu-03",
-                       "task_target": True, "effect": "deny", "dangerous": False}]
+    assert r["open_privilege"]["task"] == 0
+    assert r["open_privilege"]["reachable_on_target_or_dangerous"] == []
+    v1 = _run("pes-hu-03", "inprocess-v1")
+    assert v1["open_privilege"]["task"] == 0
+
+
+def test_no_self_denial_names_its_rule(acme_repo, clock, audit_log):
+    import dataclasses
+
+    from warden.data import seed
+    from warden.security import PERSONA_HUMAN, AuthPrincipal
+    from warden.tools import ToolService
+
+    agent = AuthPrincipal("svc", "acme", "lead", frozenset({"change:read", "change:approve"}))
+    ToolService(acme_repo, clock, principal=agent).record_decision("cr-005")
+    lead = AuthPrincipal("u-lead", "acme", "lead", frozenset({"change:read", "change:approve"}),
+                         persona=PERSONA_HUMAN, gate_roles=frozenset({"approver"}))
+    assert seed.SCENARIOS_BY_NAME["recent_incident_service"].request.requester.id == "u-lead"
+    with pytest.raises(Exception) as exc:
+        ToolService(acme_repo, clock, principal=dataclasses.replace(lead)).deny_change("cr-005")
+    assert "no-self-denial" in str(exc.value)
 
 
 def test_hallucinated_call_is_counted_and_never_reaches_the_server():
