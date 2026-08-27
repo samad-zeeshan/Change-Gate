@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Iterator, Optional
 
-from ..audit import GENESIS_HASH, AuditEntry, compute_entry_hash
+from ..audit import GENESIS_HASH, AuditEntry, compute_entry_hash, compute_evidence_hash
 from ..domain.models import (
     ChangeKind,
     ChangePolicy,
@@ -216,44 +216,63 @@ class PostgresRepository:
                 "request_id": f["request_id"],
                 "trace_id": f.get("trace_id", ""),
                 "timestamp": ts.isoformat(),
+                "evidence": f.get("evidence") or {},
+                "evidence_hash": compute_evidence_hash(f.get("evidence") or {}),
             }
             entry_hash = compute_entry_hash(prev_hash, payload)
             cur.execute(
                 "INSERT INTO audit_log(tenant_id, seq, subject, action, environment, "
                 "decision, risk_band, risk_score, before_val, after_val, reason, "
-                "risk_breakdown, request_id, trace_id, ts, prev_hash, entry_hash) VALUES "
-                "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "risk_breakdown, request_id, trace_id, ts, prev_hash, entry_hash, evidence, "
+                "evidence_hash) VALUES "
+                "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     self.tenant_id, seq, f["subject"], f["action"], f["environment"],
                     f["decision"], f["risk_band"], f["risk_score"],
                     json.dumps(f["before"]), json.dumps(f["after"]), f["reason"],
                     json.dumps(f["risk_breakdown"]), f["request_id"], f.get("trace_id", ""),
                     ts, prev_hash, entry_hash,
+                    json.dumps(payload["evidence"], default=str), payload["evidence_hash"],
                 ),
             )
         return AuditEntry(**payload, prev_hash=prev_hash, entry_hash=entry_hash)
 
 
+    _AUDIT_COLUMNS = (
+        "SELECT seq, subject, action, environment, decision, risk_band, risk_score, "
+        "before_val, after_val, reason, risk_breakdown, request_id, trace_id, ts, "
+        "prev_hash, entry_hash, evidence, evidence_hash FROM audit_log "
+    )
+
+    def _entry(self, r) -> AuditEntry:
+        return AuditEntry(
+            seq=r[0], tenant_id=self.tenant_id, subject=r[1], action=r[2],
+            environment=r[3], decision=r[4], risk_band=r[5], risk_score=r[6],
+            before=r[7], after=r[8], reason=r[9], risk_breakdown=r[10],
+            request_id=r[11], trace_id=r[12], timestamp=r[13].isoformat(),
+            prev_hash=r[14], entry_hash=r[15], evidence=r[16], evidence_hash=r[17],
+        )
+
     def audit_entries(self, request_id: str) -> list[AuditEntry]:
         # RLS scopes this to the bound tenant, same as every other read.
         with self._tx_cursor() as cur:
-            cur.execute(
-                "SELECT seq, subject, action, environment, decision, risk_band, risk_score, "
-                "before_val, after_val, reason, risk_breakdown, request_id, trace_id, ts, "
-                "prev_hash, entry_hash FROM audit_log WHERE request_id = %s ORDER BY seq",
-                (request_id,),
-            )
+            cur.execute(self._AUDIT_COLUMNS + "WHERE request_id = %s ORDER BY seq",
+                        (request_id,))
             rows = cur.fetchall()
-        return [
-            AuditEntry(
-                seq=r[0], tenant_id=self.tenant_id, subject=r[1], action=r[2],
-                environment=r[3], decision=r[4], risk_band=r[5], risk_score=r[6],
-                before=r[7], after=r[8], reason=r[9], risk_breakdown=r[10],
-                request_id=r[11], trace_id=r[12], timestamp=r[13].isoformat(),
-                prev_hash=r[14], entry_hash=r[15],
-            )
-            for r in rows
-        ]
+        return [self._entry(r) for r in rows]
+
+    def audit_log_entries(self) -> list[AuditEntry]:
+        with self._tx_cursor() as cur:
+            cur.execute(self._AUDIT_COLUMNS + "ORDER BY seq")
+            rows = cur.fetchall()
+        return [self._entry(r) for r in rows]
+
+    def latest_audit(self, action: str) -> Optional[AuditEntry]:
+        with self._tx_cursor() as cur:
+            cur.execute(self._AUDIT_COLUMNS + "WHERE action = %s ORDER BY seq DESC LIMIT 1",
+                        (action,))
+            row = cur.fetchone()
+        return self._entry(row) if row else None
 
 
 def connect(dsn: str, tenant_id: str) -> PostgresRepository:

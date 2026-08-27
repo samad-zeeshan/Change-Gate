@@ -43,5 +43,7 @@ def test_route_includes_full_risk_breakdown(acme_service):
 def test_every_governed_write_emits_exactly_one_audit_row(acme_service, audit_log):
     for s in seed.SCENARIOS:
         acme_service.record_decision(s.request.id, now=seed.EVAL_NOW.isoformat())
-    assert len(audit_log.for_tenant("acme")) == len(seed.SCENARIOS)
+    rows = audit_log.for_tenant("acme")
+    assert len([r for r in rows if r.action != "policy_version"]) == len(seed.SCENARIOS)
+    assert [r.action for r in rows].count("policy_version") == 1
     assert audit_log.verify_chain("acme") is True

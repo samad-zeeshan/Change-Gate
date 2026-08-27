@@ -46,6 +46,7 @@ class ToolBoundary:
         return self.sessions.learned(principal)
 
     def admit(self, tool: str, args: object) -> ToolSpec:
+        self.service.authorising_roles = ()
         try:
             spec = resolve_call(tool, args, registry_for(self.binding))
         except RejectedCall as exc:
@@ -65,6 +66,9 @@ class ToolBoundary:
             msg = f"persona {persona!r} holds no role that may call {spec.name}"
             self.audit_refusal("tool_denied", args, msg)
             raise ToolDenied(msg)
+        held = self.persona_map.roles_for(principal, self.learned())
+        allowed = self.persona_map.tool_roles.get(spec.name, frozenset())
+        self.service.authorising_roles = tuple(sorted((held | {"catalog"}) & allowed))
         if self.binding == BINDING_PARAMETER:
             tenant = args.get("tenant_id")
             if tenant not in principal.entitled_tenants():
@@ -139,7 +143,7 @@ class ToolBoundary:
         raise ToolDenied(msg)
 
     def audit_refusal(self, action: str, args: object, reason: str,
-                      decision: str = "blocked") -> None:
+                      decision: str = "blocked", rule_id: str = "") -> None:
         svc = self.service
         fields = args if isinstance(args, dict) else {}
         principal = svc.principal
@@ -161,4 +165,5 @@ class ToolBoundary:
             request_id=request_id,
             trace_id=trace_id if isinstance(trace_id, str) else "",
             timestamp=svc.clock.now(),
+            evidence=svc.evidence(rule_id or action),
         )

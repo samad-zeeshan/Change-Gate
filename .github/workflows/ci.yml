@@ -17,6 +17,7 @@ jobs:
             pip install --upgrade pip
             pip install -r requirements.lock
             pip install -e . --no-deps
-            ruff check src eval db tests --select F
+            ruff check src eval db tests policy --select F
+            python -m policy.verify --check
             pytest -q
           '

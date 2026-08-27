@@ -1,3 +1,5 @@
+"""The repository interface and the in-memory backend used offline and in the eval."""
+
 
 from __future__ import annotations
 
@@ -35,6 +37,7 @@ class Repository(Protocol):
     ) -> ConfigValue: ...
     def append_audit(self, **fields) -> AuditEntry: ...
     def audit_entries(self, request_id: str) -> list[AuditEntry]: ...
+    def latest_audit(self, action: str) -> Optional[AuditEntry]: ...
 
 
 _REQUESTS: dict[tuple[str, str], ChangeRequest] = {
@@ -104,3 +107,9 @@ class InMemoryRepository:
 
     def audit_entries(self, request_id: str) -> list[AuditEntry]:
         return [e for e in self._audit.for_tenant(self.tenant_id) if e.request_id == request_id]
+
+    def latest_audit(self, action: str) -> Optional[AuditEntry]:
+        for entry in reversed(self._audit.for_tenant(self.tenant_id)):
+            if entry.action == action:
+                return entry
+        return None

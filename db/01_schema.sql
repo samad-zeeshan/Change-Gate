@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ts              TIMESTAMPTZ NOT NULL,
     prev_hash       TEXT NOT NULL,
     entry_hash      TEXT NOT NULL,
+    evidence        JSONB NOT NULL DEFAULT '{}',
+    evidence_hash   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, seq)
 );
 

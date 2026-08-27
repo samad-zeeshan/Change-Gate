@@ -17,6 +17,11 @@ from typing import Optional
 GENESIS_HASH = "0" * 64
 
 
+def compute_evidence_hash(evidence: dict) -> str:
+    blob = json.dumps(evidence or {}, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def compute_entry_hash(prev_hash: str, payload: dict) -> str:
     # Fold the previous hash into this one so entries form a chain, not independent
     # hashes. Canonical JSON keeps the digest stable across dict ordering.
@@ -43,6 +48,10 @@ class AuditEntry:
     timestamp: str
     prev_hash: str
     entry_hash: str
+    # What the decision rested on (FAVA, arXiv 2607.27267): credential claims,
+    # persona, roles held, policy clause, risk inputs, verifier run.
+    evidence: dict = None
+    evidence_hash: str = ""
 
     def chained_payload(self) -> dict:
         return {
@@ -61,6 +70,8 @@ class AuditEntry:
             "request_id": self.request_id,
             "trace_id": self.trace_id,
             "timestamp": self.timestamp,
+            "evidence": self.evidence or {},
+            "evidence_hash": self.evidence_hash,
         }
 
 
@@ -102,6 +113,7 @@ class AuditLog:
         request_id: str,
         trace_id: str,
         timestamp: datetime,
+        evidence: Optional[dict] = None,
     ) -> AuditEntry:
         prev = self.head_hash(tenant_id)
         seq = self.next_seq(tenant_id)
@@ -121,6 +133,8 @@ class AuditLog:
             "request_id": request_id,
             "trace_id": trace_id,
             "timestamp": timestamp.isoformat(),
+            "evidence": evidence or {},
+            "evidence_hash": compute_evidence_hash(evidence or {}),
         }
         entry_hash = compute_entry_hash(prev, payload)
         entry = AuditEntry(
@@ -133,22 +147,31 @@ class AuditLog:
         return [e for e in self._entries if e.tenant_id == tenant_id]
 
     def verify_chain(self, tenant_id: Optional[str] = None) -> bool:
-        prev_by_tenant: dict[str, str] = {}
-        seq_by_tenant: dict[str, int] = {}
-        # Chains are independent per tenant, so track the running prev hash and seq
-        # separately for each one rather than assuming a single global order.
-        for entry in self._entries:
-            if tenant_id is not None and entry.tenant_id != tenant_id:
-                continue
-            expected_prev = prev_by_tenant.get(entry.tenant_id, GENESIS_HASH)
-            if entry.prev_hash != expected_prev:
-                return False
-            expected_seq = seq_by_tenant.get(entry.tenant_id, 0) + 1
-            if entry.seq != expected_seq:
-                return False
-            recomputed = compute_entry_hash(entry.prev_hash, entry.chained_payload())
-            if recomputed != entry.entry_hash:
-                return False
-            prev_by_tenant[entry.tenant_id] = entry.entry_hash
-            seq_by_tenant[entry.tenant_id] = entry.seq
-        return True
+        return verify_entries(self._entries, tenant_id)
+
+
+def verify_entries(entries, tenant_id: Optional[str] = None) -> bool:
+    """Check a sequence of entries in log order. Shared by memory and Postgres."""
+    prev_by_tenant: dict[str, str] = {}
+    seq_by_tenant: dict[str, int] = {}
+    # Chains are independent per tenant, so track the running prev hash and seq
+    # separately for each one rather than assuming a single global order.
+    for entry in entries:
+        if tenant_id is not None and entry.tenant_id != tenant_id:
+            continue
+        expected_prev = prev_by_tenant.get(entry.tenant_id, GENESIS_HASH)
+        if entry.prev_hash != expected_prev:
+            return False
+        expected_seq = seq_by_tenant.get(entry.tenant_id, 0) + 1
+        if entry.seq != expected_seq:
+            return False
+        # The evidence hash is checked on its own first, so an edit to the
+        # evidence fails here even if someone rehashed the entry around it.
+        if entry.evidence_hash != compute_evidence_hash(entry.evidence or {}):
+            return False
+        recomputed = compute_entry_hash(entry.prev_hash, entry.chained_payload())
+        if recomputed != entry.entry_hash:
+            return False
+        prev_by_tenant[entry.tenant_id] = entry.entry_hash
+        seq_by_tenant[entry.tenant_id] = entry.seq
+    return True

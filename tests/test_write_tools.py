@@ -93,7 +93,7 @@ def test_agent_prod_auto_approve_is_downgraded_to_route(lenient_band, agent, rep
     assert _config(repo, "db_pool_size", Environment.PROD) == 20
     assert any("agent-no-prod-apply" in r for r in result["reasons"])
     actions = [e.action for e in audit_log.for_tenant("acme")]
-    assert actions == ["policy_denied", "record_decision"]
+    assert actions == ["policy_version", "policy_denied", "record_decision"]
     assert agent.request_state("cr-002") == "routed"
     assert audit_log.verify_chain("acme")
 

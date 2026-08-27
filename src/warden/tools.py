@@ -22,6 +22,7 @@ from .policy import (
     PolicyDecision,
     PolicyDenied,
     ProposedAction,
+    governing_record,
     load_action_policy,
 )
 from .security import PERSONA_UNKNOWN, AuthPrincipal, AuthorizationError, authorize_write
@@ -55,6 +56,8 @@ class ToolService:
         self.clock = clock
         self.principal = principal
         self.policy = policy or load_action_policy()
+        # Set by the boundary once a call is admitted: the roles that allowed it.
+        self.authorising_roles: tuple[str, ...] = ()
 
 
     def get_change_request(self, request_id: str) -> dict:
@@ -229,6 +232,7 @@ class ToolService:
             request_id=request_id,
             trace_id=trace_id,
             timestamp=moment,
+            evidence=self.evidence(verdict.rule_id, assessment),
         )
 
         return {
@@ -314,6 +318,7 @@ class ToolService:
             request_id=req.id,
             trace_id=trace_id,
             timestamp=moment,
+            evidence=self.evidence(verdict.rule_id, assessment),
         )
         return {
             "request_id": req.id,
@@ -338,6 +343,7 @@ class ToolService:
         moment: datetime,
         trace_id: str,
     ) -> None:
+        self._record_policy_version(moment, trace_id)
         if self.principal is None:
             return
         try:
@@ -351,8 +357,25 @@ class ToolService:
             # Record the denied attempt before re-raising. A blocked write is
             # exactly the kind of thing the audit log exists to capture.
             self._audit_blocked(f"{tool}_denied", req, assessment, moment, trace_id,
-                                f"authorization denied: {exc}")
+                                f"authorization denied: {exc}", rule_id="scope")
             raise
+
+    def _record_policy_version(self, moment: datetime, trace_id: str) -> None:
+        # Every write, allowed or refused, sits after an entry that names the policy
+        # in force and the verifier run that approved it. A new version adds one.
+        record = governing_record(self.policy)
+        last = self.repo.latest_audit("policy_version")
+        seen = last.after if last is not None and isinstance(last.after, dict) else {}
+        if (seen.get("policy_version"), seen.get("policy_sha256")) == \
+                (record["policy_version"], record["policy_sha256"]):
+            return
+        self.repo.append_audit(
+            subject="warden", action="policy_version", environment="",
+            decision="recorded", risk_band="", risk_score=0.0, before=None, after=record,
+            reason=f"policy {record['policy_version']} verifier {record['verifier_result']}",
+            risk_breakdown={}, request_id="", trace_id=trace_id, timestamp=moment,
+            evidence=self.evidence(),
+        )
 
     def _check_write(
         self,
@@ -383,7 +406,8 @@ class ToolService:
         verdict = self.policy.check(proposed)
         if not verdict.allowed:
             self._audit_blocked("policy_denied", req, assessment, moment, trace_id,
-                                f"{verdict.describe()} (tool {tool}, action {action})")
+                                f"{verdict.describe()} (tool {tool}, action {action})",
+                                rule_id=verdict.rule_id)
         return verdict
 
     def _audit_blocked(
@@ -394,6 +418,7 @@ class ToolService:
         moment: datetime,
         trace_id: str,
         reason: str,
+        rule_id: str = "",
     ) -> AuditEntry:
         return self.repo.append_audit(
             subject=self._subject(req),
@@ -409,7 +434,26 @@ class ToolService:
             request_id=req.id,
             trace_id=trace_id,
             timestamp=moment,
+            evidence=self.evidence(rule_id, assessment),
         )
+
+    def evidence(self, rule_id: str = "",
+                 assessment: Optional[RiskAssessment] = None) -> dict:
+        """What this entry rests on, so an auditor can check it without the logs."""
+        record = governing_record(self.policy)
+        return {
+            "credential": _credential_claims(self.principal),
+            "persona": self.principal.persona if self.principal else PERSONA_UNKNOWN,
+            "roles": list(self.authorising_roles),
+            "policy": {"version": record["policy_version"], "rule_id": rule_id,
+                       "sha256": record["policy_sha256"]},
+            "risk": None if assessment is None else {
+                "inputs_fingerprint": assessment.inputs_fingerprint,
+                "score": assessment.score, "band": assessment.band.value},
+            "verifier": {"version": record["verifier_version"] or "none",
+                         "output_hash": record["verifier_output_hash"],
+                         "result": record["verifier_result"]},
+        }
 
     def _subject(self, req: ChangeRequest) -> str:
         return self.principal.subject if self.principal else req.requester.id
@@ -422,7 +466,7 @@ class ToolService:
                 decision="blocked", risk_band="", risk_score=0.0, before=None, after=None,
                 reason=f"credential is bound to {bound!r}, not {request_id!r}",
                 risk_breakdown={}, request_id=request_id, trace_id="",
-                timestamp=self.clock.now(),
+                timestamp=self.clock.now(), evidence=self.evidence("request-binding"),
             )
             raise AuthorizationError(f"credential is bound to {bound!r}, not {request_id!r}")
         try:
@@ -444,6 +488,7 @@ class ToolService:
                 request_id=request_id,
                 trace_id="",
                 timestamp=self.clock.now(),
+                evidence=self.evidence("tenant-scope"),
             )
             req = None
         if req is None:
@@ -454,6 +499,21 @@ class ToolService:
         if now:
             return ensure_utc(datetime.fromisoformat(now))
         return self.clock.now()
+
+
+_CLAIMS_USED = ("iss", "sub", "azp", "tenant_id", "request_id", "jti", "exp", "scope",
+                "token_use")
+
+
+def _credential_claims(principal: Optional[AuthPrincipal]) -> dict:
+    if principal is None:
+        return {}
+    if principal.claims:
+        return {k: principal.claims[k] for k in _CLAIMS_USED if k in principal.claims}
+    # No token in-process. Record what the dispatcher bound, and say so.
+    return {"source": "in-process", "sub": principal.subject,
+            "tenant_id": principal.tenant_id, "request_id": principal.request_id,
+            "jti": principal.token_id, "scope": " ".join(sorted(principal.scopes))}
 
 
 def _request_to_dict(req: ChangeRequest) -> dict:

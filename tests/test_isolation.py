@@ -149,3 +149,28 @@ def test_unset_tenant_context_denies_returns_zero_rows_not_error():
         conn.close()
 
     assert count == 0
+
+
+@pg
+@pytest.mark.postgres
+def test_postgres_chain_with_evidence_verifies_as_read_back():
+    import dataclasses
+
+    from warden.audit import verify_entries
+    from warden.clock import FixedClock
+    from warden.data import seed
+    from warden.db.postgres_repository import connect
+    from warden.security import SCOPE_APPROVE, SCOPE_READ, AuthPrincipal
+    from warden.tools import ToolService
+
+    repo = connect(APP_DSN, "acme")
+    agent = AuthPrincipal("svc", "acme", "lead", frozenset({SCOPE_READ, SCOPE_APPROVE}),
+                          token_id="pg-evidence")
+    for rid in ("cr-002", "cr-005"):
+        svc = ToolService(repo, FixedClock(seed.EVAL_NOW),
+                          principal=dataclasses.replace(agent, request_id=rid))
+        if svc.request_state(rid) == "new":
+            svc.record_decision(rid)
+    entries = repo.audit_log_entries()
+    assert entries and all(e.evidence for e in entries if e.action != "policy_version")
+    assert verify_entries(entries, "acme")

@@ -85,5 +85,6 @@ async def walk_server_to_decide(server) -> None:
 
 
 def decisions(entries) -> list[str]:
-    # Role grants are audited too. Most tests care about everything else.
-    return [e.action for e in entries if e.action != "role_learned"]
+    # Role grants and the policy-version entry are audited too. Most tests care
+    # about everything else.
+    return [e.action for e in entries if e.action not in ("role_learned", "policy_version")]

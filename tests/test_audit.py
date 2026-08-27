@@ -1,3 +1,5 @@
+"""The audit chain: one row per governed write, and tampering breaks verification."""
+
 
 from __future__ import annotations
 
@@ -25,8 +27,11 @@ def test_exactly_one_audit_row_per_governed_write():
     for s in seed.SCENARIOS:
         svc.record_decision(s.request.id, now=seed.EVAL_NOW.isoformat())
     rows = log.for_tenant("acme")
-    assert len(rows) == len(seed.SCENARIOS)
-    assert [r.seq for r in rows] == list(range(1, len(seed.SCENARIOS) + 1))
+    governed = [r for r in rows if r.action != "policy_version"]
+    # One row per write, plus one chain-level entry naming the policy in force.
+    assert len(governed) == len(seed.SCENARIOS)
+    assert [r.action for r in rows].count("policy_version") == 1
+    assert [r.seq for r in rows] == list(range(1, len(rows) + 1))
 
 
 def test_hash_chain_verifies_then_breaks_on_tamper():
@@ -36,8 +41,9 @@ def test_hash_chain_verifies_then_breaks_on_tamper():
         svc.record_decision(s.request.id, now=seed.EVAL_NOW.isoformat())
     assert log.verify_chain("acme") is True
 
-    tampered = dataclasses.replace(log._entries[1], decision="auto_approve")
-    log._entries[1] = tampered
+    i = next(k for k, e in enumerate(log._entries) if e.request_id == "cr-002")
+    assert log._entries[i].decision == "route"
+    log._entries[i] = dataclasses.replace(log._entries[i], decision="auto_approve")
     assert log.verify_chain("acme") is False
 
 

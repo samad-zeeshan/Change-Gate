@@ -9,6 +9,7 @@ at a different file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -37,6 +38,36 @@ def default_policy_path() -> Path:
 def load_policy_document(path: Optional[Path] = None) -> dict:
     path = path or default_policy_path()
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def policy_sha256(doc: dict) -> str:
+    # Same canonical form policy/verify.py hashes, so the two can be compared.
+    blob = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=8)
+def _governing(path: str, version: str) -> tuple[tuple[str, str], ...]:
+    doc = load_policy_document(Path(path))
+    record = {"policy_version": version, "policy_sha256": "", "verifier_version": "",
+              "verifier_output_hash": "", "verifier_result": "unverified"}
+    if doc.get("version") != version:
+        return tuple(record.items())
+    record["policy_sha256"] = policy_sha256(doc)
+    ver_path = Path(path).parent / "verification.json"
+    if ver_path.exists():
+        ver = json.loads(ver_path.read_text(encoding="utf-8"))
+        # A verification only counts for the exact file it checked.
+        if ver.get("new_sha256") == record["policy_sha256"]:
+            record.update(verifier_version=ver["verifier_version"],
+                          verifier_output_hash=ver["output_hash"],
+                          verifier_result=ver["result"])
+    return tuple(record.items())
+
+
+def governing_record(policy: "ActionPolicy") -> dict:
+    """The policy version in force, its hash, and the verifier run that approved it."""
+    return dict(_governing(str(default_policy_path()), policy.version))
 
 
 @dataclass(frozen=True)
