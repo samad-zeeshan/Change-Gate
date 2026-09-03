@@ -8,9 +8,11 @@ from .security import AuthPrincipal
 
 
 def session_key(principal: AuthPrincipal) -> str:
-    # The token id is the session. Principals built in-process without one fall
-    # back to subject and request, which is still one task.
-    return principal.token_id or f"{principal.subject}:{principal.request_id}"
+    # One task is one session. A credential re-issued for the same subject and
+    # request keeps what was learned, and the learnable list still bounds it.
+    if principal.request_id:
+        return f"{principal.subject}:{principal.request_id}"
+    return principal.token_id or principal.subject
 
 
 @dataclass

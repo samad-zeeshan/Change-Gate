@@ -156,3 +156,12 @@ def test_a_manipulated_risk_result_does_not_move_the_decision():
     r = _run("uaa-mn-01")
     assert r["agent_terminal_decision"] == r["nominal_decision"] == "route"
     assert r["attack_succeeded"] is False
+
+
+def test_http_listing_after_delivery_matches_the_learned_roles():
+    # Over HTTP the listing is filtered by learned roles. Checked after the run it
+    # must match the registry view exactly, with no tool reported missing.
+    r = _run("uaa-rp-01", "http")
+    assert r["tool_drift"] == []
+    r = _run("uaa-td-02", "http")
+    assert any("record_decision" in d and "description" in d for d in r["tool_drift"])

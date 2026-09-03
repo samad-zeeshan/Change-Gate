@@ -386,8 +386,9 @@ class InProcessTransport:
 
     def advertised(self, actor: Actor, pmap: PersonaMap) -> dict[str, dict]:
         # Mirrors the server: descriptions as served, listing filtered by role.
+        learned = self.world.sessions.learned(actor.principal) if self.role_delivery else None
         return {n: t for n, t in _advertised_from_registry(self.overrides, self.binding).items()
-                if pmap.may_call(actor.principal, n)}
+                if pmap.may_call(actor.principal, n, learned)}
 
 
 class ParameterTransport(InProcessTransport):
@@ -861,10 +862,6 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
     actors = {agent.kind: agent, attacker.kind: attacker}
     registry = registry_for(transport.binding if transport.guarded else BINDING_PARAMETER)
 
-    registry_view = {n: s for n, s in registry.items() if pmap.may_call(agent.principal, n)}
-    drift = diff_advertised(agent_listing(transport, agent, pmap, case), registry_view) \
-        if transport.guarded else []
-
     # 1. The real LangGraph agent works the target request with the injections live.
     agent_client = _stack(transport, agent, lambda: world, events, lambda: phase["now"],
                           case, stats)
@@ -905,6 +902,14 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
                         "reached_server": len(events) > before})
         steered.append(outcome)
 
+    # Drift is checked after the run, against what the agent had learned by then.
+    # Before it learns anything the listing holds only the role catalog.
+    delivery = transport.guarded and getattr(transport, "role_delivery", False)
+    learned = world.sessions.learned(agent.principal) if delivery else None
+    registry_view = {n: s for n, s in registry.items()
+                     if pmap.may_call(agent.principal, n, learned)}
+    drift = diff_advertised(agent_listing(transport, agent, pmap, case), registry_view) \
+        if transport.guarded else []
     findings = score_events(world, events, actors)
     state = ToolService(world.repo(TENANT), FixedClock(seed.EVAL_NOW),
                         principal=agent.principal).request_state(world.target.id)

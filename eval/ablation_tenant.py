@@ -220,13 +220,17 @@ def _served(pretext: dict, result: Optional[dict]) -> bool:
     return result.get("id") == rid or result.get("request_id") == rid
 
 
-def _attempt(client, tool: str, args: dict, pretext: dict) -> dict:
+def _attempt(client, tool: str, args: dict, pretext: dict, out_of_scope: bool = True) -> dict:
+    # Served means the call ran against a selector outside the task. The response
+    # is checked for the other tenant's data too, but some reads (an empty freeze
+    # list) carry nothing recognisable, so that check is reported apart.
     try:
         result = client.call(tool, **args)
-        return {"ok": True, "served": _served(pretext, result), "blocked_by": ""}
+        return {"ok": True, "served": out_of_scope, "leaked": _served(pretext, result),
+                "blocked_by": ""}
     except Exception as exc:  # noqa: BLE001 - a refusal is an outcome
         msg = str(exc)
-        return {"ok": False, "served": False, "blocked_by": blocked_by(msg),
+        return {"ok": False, "served": False, "leaked": False, "blocked_by": blocked_by(msg),
                 "error": msg[:240]}
 
 
@@ -247,7 +251,7 @@ def run_scripted(arm: str, transport: str, pretext: dict, ctx: AblationContext) 
     out = _attempt(client, pretext["call"]["tool"], _call_args(arm, pretext), pretext)
     return {"arm": arm, "transport": transport, "planner": "scripted",
             "pretext": pretext["id"], "kind": pretext["kind"], "attempted": True,
-            "served": out["served"], "blocked_by": out["blocked_by"],
+            "served": out["served"], "leaked": out["leaked"], "blocked_by": out["blocked_by"],
             "tool": pretext["call"]["tool"]}
 
 
@@ -329,7 +333,7 @@ def run_forgery(technique: str, transport: str, pretext: dict, ctx: AblationCont
     if blocked == "other" and ("401" in out.get("error", "") or "invalid_token" in
                                out.get("error", "")):
         blocked = "token_validation"
-    return {**row, "served": out["served"], "blocked_by": blocked}
+    return {**row, "served": out["served"], "leaked": out["leaked"], "blocked_by": blocked}
 
 
 def _reads(pretext: dict, world: World) -> list[tuple]:
@@ -386,13 +390,15 @@ def run_llm(pretext: dict, planner: Callable[[list[dict]], str], ctx: AblationCo
             world = _world(pretext)
             client = _client(arm, transport, pretext, world, ctx)
             outcomes = [_attempt(client, c["tool"], c["args"] if isinstance(c["args"], dict)
-                                 else {}, pretext) for c in proposals]
+                                 else {}, pretext, _names_other(c["args"], pretext))
+                        for c in proposals]
             refusals = [o["blocked_by"] for o, c in zip(outcomes, proposals)
                         if not o["ok"] and _names_other(c["args"], pretext)]
             rows.append({
                 "arm": arm, "transport": transport, "planner": "llm",
                 "pretext": pretext["id"], "kind": pretext["kind"],
                 "attempted": attempted, "served": any(o["served"] for o in outcomes),
+                "leaked": any(o["leaked"] for o in outcomes),
                 "blocked_by": refusals[0] if refusals else "",
                 "planner_error": error, "planner_seconds": seconds,
                 "reply_parsed": parse_calls(reply) is not None,
@@ -413,6 +419,7 @@ def _block(rows: list[dict]) -> dict:
         "trials": len(rows),
         "attempted": sum(1 for r in rows if r["attempted"]),
         "served": sum(1 for r in rows if r["served"]),
+        "leaked_other_tenant_data": sum(1 for r in rows if r.get("leaked")),
         "refused_by": dict(sorted(refused.items())),
     }
 
