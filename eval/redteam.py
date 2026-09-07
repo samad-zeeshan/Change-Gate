@@ -842,7 +842,8 @@ def agent_listing(transport, actor: Actor, pmap: PersonaMap, case: dict) -> dict
 
 
 def run_case(case: dict, transport, pmap: PersonaMap) -> dict:
-    world = World.for_case(case)
+    make = getattr(transport, "make_world", None)
+    world = make(case) if make else World.for_case(case)
     transport.begin_case(world, case["injections"].get("tool_description", {}))
     try:
         return _run_case(case, world, transport, pmap)
@@ -859,6 +860,8 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
     bound = world.target.id if transport.binding == BINDING_REQUEST else ""
     agent = agent_actor(bound)
     attacker = actor_for(case["attacker"], pmap, bound)
+    if hasattr(transport, "adapt_actor"):
+        attacker = transport.adapt_actor(attacker)
     actors = {agent.kind: agent, attacker.kind: attacker}
     registry = registry_for(transport.binding if transport.guarded else BINDING_PARAMETER)
 
@@ -913,8 +916,11 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
     findings = score_events(world, events, actors)
     state = ToolService(world.repo(TENANT), FixedClock(seed.EVAL_NOW),
                         principal=agent.principal).request_state(world.target.id)
-    open_priv = probe_open_privilege(world, attacker, transport.binding, transport.guarded,
-                                     getattr(transport, "role_delivery", False))
+    probes = getattr(transport, "probes", True)
+    open_priv = []
+    if probes:
+        open_priv = probe_open_privilege(world, attacker, transport.binding, transport.guarded,
+                                         getattr(transport, "role_delivery", False))
 
     goal_count = getattr(findings, GOAL_FIELD[case["goal"]])
     hallucinated_calls = sum(1 for s in steered if s["hallucinated"])
@@ -946,6 +952,7 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
         "audit_chain_verified": world.audit.verify_chain(),
         "tool_drift": drift,
         "open_privilege": {
+            "measured": probes,
             "task": sum(1 for r in open_priv if r["task_target"]),
             "tenant": len(open_priv),
             "dangerous": sum(1 for r in open_priv if r["dangerous"]),
@@ -1009,7 +1016,12 @@ def summarise(results: list[dict]) -> dict:
 def run_corpus(transport_name: str, cases: Optional[list[dict]] = None) -> dict:
     cases = cases if cases is not None else load_cases()
     pmap = load_persona_map()
-    transport = TRANSPORTS[transport_name]()
+    if transport_name == "live":
+        from eval.live import LiveTransport
+
+        transport = LiveTransport()
+    else:
+        transport = TRANSPORTS[transport_name]()
     transport.start()
     try:
         results = [run_case(c, transport, pmap) for c in cases]

@@ -21,3 +21,41 @@ jobs:
             python -m policy.verify --check
             pytest -q
           '
+
+  live-redteam:
+    # The red-team over HTTP against real Keycloak and real Postgres, with the
+    # production server between them. Demo credentials come from the realm export.
+    runs-on: ubuntu-latest
+    env:
+      WARDEN_LIVE_ISSUER: http://localhost:8080/realms/warden
+      WARDEN_PG_DSN: postgresql://warden_app:app_password@localhost:5432/warden
+      WARDEN_PG_ADMIN_DSN: postgresql://postgres:postgres@localhost:5432/warden
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres and Keycloak
+        run: docker compose up -d postgres keycloak
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install from the lock
+        run: |
+          pip install -r requirements.lock
+          pip install -e . --no-deps
+
+      - name: Wait for the realm
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf "$WARDEN_LIVE_ISSUER/.well-known/openid-configuration" && exit 0
+            sleep 5
+          done
+          docker compose logs keycloak | tail -50
+          exit 1
+
+      - name: Postgres and live suites
+        run: pytest -q -m "postgres or keycloak"
+
+      - name: Full corpus over live Keycloak and Postgres
+        run: python -m eval.run_redteam --transports live --out /tmp/redteam-live.json --require-clean

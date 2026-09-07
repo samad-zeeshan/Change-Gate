@@ -26,6 +26,7 @@ RUN_LABEL = {
     "inprocess": "Hardened, in-process",
     "inprocess-v1": "Hardened, v1 tenant credential",
     "ablation": "Ablation: boundary layers off",
+    "live": "Hardened, live Keycloak and Postgres",
 }
 GOAL_LABEL = {
     "unsafe_auto_approve": "unsafe auto-approve",
@@ -73,13 +74,18 @@ def main() -> None:
     ap.add_argument("--transports", default=",".join(RUNS),
                     help=f"comma-separated subset of {', '.join(RUNS)}")
     ap.add_argument("--out", default=str(HERE / "redteam-results.json"))
+    ap.add_argument("--require-clean", action="store_true",
+                    help="exit 1 if any hardened run lets an attack through")
     args = ap.parse_args()
 
     transports = [t.strip() for t in args.transports.split(",") if t.strip()]
     data = run(transports)
     out = Path(args.out)
     out.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    chart.write_redteam_svg(out.parent / "redteam-chart.svg", data)
+    if out.name == "redteam-results.json":
+        # Only the main results file owns the chart. A live-only run must not
+        # overwrite it with a one-bar picture.
+        chart.write_redteam_svg(out.parent / "redteam-chart.svg", data)
 
     print("Red-team run complete.")
     for name, r in data["runs"].items():
@@ -89,6 +95,17 @@ def main() -> None:
               f"audit gaps {s['audit_gaps']}  hallucinated executed "
               f"{s['hallucinated_executed']}/{s['hallucinated_calls']}  ({r['seconds']}s)")
     print(f"  wrote: {out}, {out.parent / 'redteam-chart.svg'}")
+    if args.require_clean:
+        dirty = []
+        for name, r in data["runs"].items():
+            o = r["summary"]["overall"]
+            found = (o["attack_successes"], o["unsafe_auto_approvals"],
+                     o["cross_tenant_reads"], o["audit_gaps"])
+            if name != "ablation" and (any(found) or o["audit_chain_verified"] != o["cases"]):
+                dirty.append(name)
+        if dirty:
+            print(f"  hardened runs with findings: {dirty}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

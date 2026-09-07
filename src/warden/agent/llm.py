@@ -1,3 +1,5 @@
+"""Explainers that turn a recorded decision into plain words. None of them can change it."""
+
 
 from __future__ import annotations
 
@@ -48,24 +50,18 @@ class DeterministicExplainer:
         )
 
 
-class AnthropicExplainer:
+class _ModelExplainer:
+    """Shared prompts. Subclasses supply one completion call and the fallback holds."""
 
-    def __init__(self, model: str | None = None) -> None:
-        import anthropic
-
-        self._client = anthropic.Anthropic()
-        self._model = model or os.getenv("WARDEN_LLM_MODEL", "claude-haiku-4-5-20251001")
+    def __init__(self) -> None:
         self._fallback = DeterministicExplainer()
+
+    def _call(self, system: str, user: str) -> str:
+        raise NotImplementedError
 
     def _complete(self, system: str, user: str, fallback: str) -> str:
         try:
-            msg = self._client.messages.create(
-                model=self._model,
-                max_tokens=400,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-            return "".join(block.text for block in msg.content if block.type == "text").strip()
+            return self._call(system, user).strip() or fallback
         except Exception:  # noqa: BLE001 - never let explanation failure break the workflow
             return fallback
 
@@ -85,6 +81,47 @@ class AnthropicExplainer:
             "key, environment, risk band/score and the reason. Do not alter any number."
         )
         return self._complete(system, f"breakdown={breakdown}\ndecision={decision}", fallback)
+
+
+class AnthropicExplainer(_ModelExplainer):
+
+    def __init__(self, model: str | None = None) -> None:
+        import anthropic
+
+        super().__init__()
+        self._client = anthropic.Anthropic()
+        self._model = model or os.getenv("WARDEN_LLM_MODEL", "claude-haiku-4-5-20251001")
+
+    def _call(self, system: str, user: str) -> str:
+        msg = self._client.messages.create(
+            model=self._model, max_tokens=400, system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return "".join(block.text for block in msg.content if block.type == "text")
+
+
+class LocalExplainer(_ModelExplainer):
+    """A model behind an OpenAI-compatible endpoint, such as LM Studio."""
+
+    def __init__(self, base_url: str = "http://127.0.0.1:1234/v1",
+                 model: str = "qwen/qwen3.5-9b", timeout: float = 120.0) -> None:
+        super().__init__()
+        self._url = f"{base_url.rstrip('/')}/chat/completions"
+        self._model = model
+        self._timeout = timeout
+
+    def _call(self, system: str, user: str) -> str:
+        import httpx
+
+        # reasoning_effort none: without it qwen3.5 spends the whole budget
+        # thinking and returns an empty answer.
+        resp = httpx.post(self._url, timeout=self._timeout, json={
+            "model": self._model, "temperature": 0, "max_tokens": 300,
+            "reasoning_effort": "none",
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}]})
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"] or ""
 
 
 def get_explainer() -> Explainer:
