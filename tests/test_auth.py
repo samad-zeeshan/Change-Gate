@@ -131,3 +131,14 @@ def test_prm_document_lists_authorization_server():
     assert doc["resource"] == AUDIENCE
     assert ISSUER in doc["authorization_servers"]
     assert SCOPE_APPROVE_PROD in doc["scopes_supported"]
+
+
+def test_a_token_without_a_subject_is_rejected(validator, keypair):
+    # Found against live Keycloak 26: without a subject mapper the console token has
+    # no sub, and an empty subject would make every self-approval look like a stranger's.
+    now = int(time.time())
+    claims = {"iss": ISSUER, "aud": AUDIENCE, "iat": now, "exp": now + 300,
+              "scope": "change:read", "tenant_id": "acme", "role": "lead"}
+    token = jwt.encode(claims, keypair, algorithm="RS256", headers={"kid": KID})
+    with pytest.raises(InvalidToken):
+        validator.validate(token)

@@ -243,3 +243,11 @@ def test_access_token_without_persona_claim_is_unknown(monkeypatch):
                          claims={"tenant_id": "acme", "role": "lead"})
     monkeypatch.setattr(server_app, "get_access_token", lambda: access)
     assert server_app._principal_from_context().persona == PERSONA_UNKNOWN
+
+
+def test_realm_puts_a_subject_in_every_client_token():
+    # Keycloak 26 only adds sub through the "basic" scope, which this realm does not
+    # import. Each client carries the subject mapper itself instead.
+    for client in _realm()["clients"]:
+        mappers = [m["protocolMapper"] for m in client.get("protocolMappers", [])]
+        assert "oidc-sub-mapper" in mappers, client["clientId"]

@@ -163,6 +163,10 @@ class TokenValidator:
         tenant_id = claims.get(self.config.tenant_claim)
         if not tenant_id:
             raise InvalidToken("token missing tenant_id claim")
+        if not claims.get("sub"):
+            # Keycloak 26 leaves sub out unless a mapper or the basic scope adds it.
+            # An empty subject would slip past the self-approval check.
+            raise InvalidToken("token missing sub claim")
         role = claims.get(self.config.role_claim, "")
         # Persona is read only after the signature, issuer and audience checks
         # above have passed, so azp is a claim the IdP actually made.

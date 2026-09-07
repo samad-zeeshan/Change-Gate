@@ -5,8 +5,14 @@
   "sslRequired": "none",
   "roles": {
     "realm": [
-      { "name": "change-approver", "description": "Demo: may approve or deny a routed change." },
-      { "name": "change-requester", "description": "Demo: may read and route changes, not decide them." }
+      {
+        "name": "change-approver",
+        "description": "Demo: may approve or deny a routed change."
+      },
+      {
+        "name": "change-requester",
+        "description": "Demo: may read and route changes, not decide them."
+      }
     ]
   },
   "users": [
@@ -17,8 +23,16 @@
       "emailVerified": true,
       "firstName": "Alice",
       "lastName": "Approver",
-      "credentials": [{ "type": "password", "value": "alice-demo", "temporary": false }],
-      "realmRoles": ["change-approver"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "change-approver"
+      ]
     },
     {
       "username": "dev-bob",
@@ -27,8 +41,16 @@
       "emailVerified": true,
       "firstName": "Bob",
       "lastName": "Requester",
-      "credentials": [{ "type": "password", "value": "bob-demo", "temporary": false }],
-      "realmRoles": ["change-requester"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "change-requester"
+      ]
     }
   ],
   "clientScopes": [
@@ -36,19 +58,28 @@
       "name": "change:read",
       "description": "Read change context (requests, policy, graph, freeze, history).",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
     },
     {
       "name": "change:approve",
       "description": "Record a change decision (governed write).",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
     },
     {
       "name": "change:approve:prod",
       "description": "Elevated: approve changes in the prod environment.",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
     }
   ],
   "clients": [
@@ -65,8 +96,21 @@
       "attributes": {
         "access.token.lifespan": "300"
       },
-      "defaultClientScopes": ["change:read", "change:approve", "change:approve:prod"],
+      "defaultClientScopes": [
+        "change:read",
+        "change:approve",
+        "change:approve:prod"
+      ],
       "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
         {
           "name": "tenant_id",
           "protocol": "openid-connect",
@@ -107,7 +151,7 @@
     },
     {
       "clientId": "warden-agent-base",
-      "name": "Warden Agent (base scope only — for negative tests)",
+      "name": "Warden Agent (base scope only \u2014 for negative tests)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -115,8 +159,20 @@
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "defaultClientScopes": ["change:read", "change:approve"],
+      "defaultClientScopes": [
+        "change:read",
+        "change:approve"
+      ],
       "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
         {
           "name": "tenant_id",
           "protocol": "openid-connect",
@@ -159,14 +215,31 @@
       "serviceAccountsEnabled": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:9099/callback", "http://127.0.0.1:9099/callback"],
+      "redirectUris": [
+        "http://localhost:9099/callback",
+        "http://127.0.0.1:9099/callback"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "access.token.lifespan": "300"
       },
-      "defaultClientScopes": ["change:read", "change:approve"],
-      "optionalClientScopes": ["change:approve:prod"],
+      "defaultClientScopes": [
+        "change:read",
+        "change:approve"
+      ],
+      "optionalClientScopes": [
+        "change:approve:prod"
+      ],
       "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
         {
           "name": "tenant_id",
           "protocol": "openid-connect",
