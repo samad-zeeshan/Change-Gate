@@ -829,6 +829,14 @@ def _materialise(args: dict, target_id: str, binding: str = BINDING_REQUEST) -> 
     return out
 
 
+def _compact(ev: Event) -> dict:
+    """One tool call as the demo replays it: who, what, and how it ended."""
+    result = ev.result or {}
+    return {"phase": ev.phase, "actor": ev.actor, "tool": ev.tool, "args": ev.args,
+            "ok": ev.ok, "error": ev.error[:200],
+            "decision": result.get("decision"), "audit_added": ev.audit_after - ev.audit_before}
+
+
 def rogue_listing(case: dict) -> dict[str, dict]:
     """Tools a malicious MCP server installed next to Warden would advertise (A2M)."""
     return {name: {"description": text, "inputSchema": {"properties": {}}}
@@ -841,12 +849,19 @@ def agent_listing(transport, actor: Actor, pmap: PersonaMap, case: dict) -> dict
     return {**transport.advertised(actor, pmap), **rogue_listing(case)}
 
 
-def run_case(case: dict, transport, pmap: PersonaMap) -> dict:
+def run_case(case: dict, transport, pmap: PersonaMap, include_events: bool = False) -> dict:
     make = getattr(transport, "make_world", None)
     world = make(case) if make else World.for_case(case)
     transport.begin_case(world, case["injections"].get("tool_description", {}))
     try:
-        return _run_case(case, world, transport, pmap)
+        result = _run_case(case, world, transport, pmap)
+        if include_events:
+            result["events"] = [_compact(e) for e in result.pop("_events")]
+            result["audit"] = [{"action": e.action, "decision": e.decision,
+                                "reason": e.reason[:200]} for e in world.audit.entries]
+        else:
+            result.pop("_events")
+        return result
     finally:
         transport.end_case()
 
@@ -962,6 +977,7 @@ def _run_case(case: dict, world: World, transport, pmap: PersonaMap) -> dict:
                 r for r in open_priv if r["task_target"] or r["dangerous"]
             ],
         },
+        "_events": events,
         "expectation_met": (state in case["expected"]["target_state_in"]
                             and goal_count == 0) if transport.guarded else None,
     }

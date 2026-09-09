@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warden demo</title>
+<meta name="description" content="Warden approves boring changes to live software, blocks dangerous ones, and cannot be talked into a bad decision by a tricked AI assistant. This page replays recorded runs.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Page styles. Kit tokens only. */
+.w-controls { display: flex; flex-wrap: wrap; gap: var(--k-s3); align-items: center; margin-block: var(--k-s5) var(--k-s4); }
+.w-btn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  padding: var(--k-s3) var(--k-s4); border-radius: var(--k-r-sm);
+  border: var(--k-bw-hair) solid var(--k-rule); background: var(--k-panel); color: var(--k-ink);
+  box-shadow: var(--k-elev-1);
+}
+.w-btn:hover { border-color: var(--k-signal); }
+.w-btn[aria-pressed="true"] { background: var(--k-signal); color: var(--k-on-signal); border-color: var(--k-signal); }
+.w-btn--surprise[aria-pressed="true"] { background: var(--k-ember); border-color: var(--k-ember); }
+.w-select { font: inherit; padding: var(--k-s2) var(--k-s3); border-radius: var(--k-r-sm); border: var(--k-bw-hair) solid var(--k-rule); background: var(--k-panel); color: var(--k-ink); max-width: 100%; }
+.w-stage {
+  background: var(--k-panel); border: var(--k-bw-hair) solid var(--k-rule); border-radius: var(--k-r-sm);
+  box-shadow: var(--k-elev-1); padding: var(--k-s5); min-height: 22rem;
+}
+.w-stage h3 { margin: 0 0 var(--k-s3); font-size: var(--k-text-md, 1.05rem); }
+.w-planted { background: var(--k-ember-wash); border-left: 3px solid var(--k-ember); padding: var(--k-s3) var(--k-s4); margin-bottom: var(--k-s4); font-size: var(--k-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+.w-log { list-style: none; margin: 0; padding: 0; font-family: var(--k-font-mono); font-size: var(--k-text-sm); }
+.w-log li { padding: 0.3rem 0; border-bottom: var(--k-bw-hair) dashed var(--k-rule); display: grid; grid-template-columns: 6.5rem 1fr; gap: var(--k-s3); overflow-wrap: anywhere; }
+.w-log li[data-kind="agent"] .w-who { color: var(--k-slate); }
+.w-log li[data-kind="steered"] .w-who { color: var(--k-ember); }
+.w-log li[data-kind="audit"] .w-who { color: var(--k-signal); }
+.w-no { color: var(--k-ember); font-weight: 600; }
+.w-ok { color: var(--k-signal); font-weight: 600; }
+.w-verdict { margin-top: var(--k-s4); padding: var(--k-s4); border-radius: var(--k-r-sm); background: var(--k-signal-wash); }
+.w-verdict--bad { background: var(--k-ember-wash); }
+.w-verdict strong { display: block; font-size: 1.1rem; margin-bottom: var(--k-s2); }
+.w-chain { width: 100%; border-collapse: collapse; font-size: var(--k-text-sm); }
+.w-chain th, .w-chain td { overflow-wrap: anywhere; text-align: left; padding: 0.35rem 0.4rem; border-bottom: var(--k-bw-hair) solid var(--k-rule); }
+.w-chain td.w-mono { font-family: var(--k-font-mono); }
+.w-chain tr[data-state="broken"] td { color: var(--k-ember); }
+.w-chain tr[data-state="edited"] td { color: var(--k-ember); font-weight: 700; }
+.w-status { margin-top: var(--k-s4); font-weight: 700; }
+.w-status[data-ok="true"] { color: var(--k-signal); }
+.w-status[data-ok="false"] { color: var(--k-ember); }
+.w-hint { color: var(--k-slate); font-size: var(--k-text-sm); margin-top: var(--k-s3); }
+@media (prefers-reduced-motion: reduce) { .w-log li { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="k-hero" data-k-hero-wash>
+  <div class="k-hero__wash" data-k-wash></div>
+  <div class="k-container k-hero__inner">
+    <span class="k-hero__eyebrow">Project</span>
+    <h1 class="k-hero__title">Warden</h1>
+    <p class="k-hero__what">An automated security guard for changes to live software. It approves boring ones, blocks dangerous ones, asks a human only when unsure, keeps an unerasable log, and cannot be talked into a bad decision by an AI assistant that was tricked.</p>
+    <p class="k-hero__who">Every button below replays a run that was recorded from the real code. Nothing runs live on this page.</p>
+    <div class="k-hero__meta">
+      <a class="k-badge-run" href="data/replay.json">
+        <span class="k-badge-run__dot"></span>
+        <span class="k-badge-run__text" data-w-badge>Recorded runs</span>
+      </a>
+      <button class="k-theme-toggle" type="button" data-k-theme-toggle>
+        Theme: <span data-k-theme-label>Auto</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="k-container">
+
+  <section class="k-section" aria-labelledby="try-title">
+    <h2 class="k-section__title" id="try-title">Try it</h2>
+    <p class="k-section__lede">Pick one. The last one is the surprise.</p>
+
+    <div class="w-controls" role="group" aria-label="Demo runs">
+      <button class="w-btn" type="button" data-run="safe" aria-pressed="false">Safe change</button>
+      <button class="w-btn" type="button" data-run="dangerous" aria-pressed="false">Dangerous change</button>
+      <button class="w-btn" type="button" data-run="attack" aria-pressed="false">Attack it</button>
+      <button class="w-btn w-btn--surprise" type="button" data-run="tamper" aria-pressed="false">Tamper with the log</button>
+    </div>
+    <label class="w-hint" for="attack-pick">Attack to replay:</label>
+    <select class="w-select" id="attack-pick" aria-label="Attack to replay"></select>
+
+    <div class="w-stage" id="stage" aria-live="polite">
+      <p class="w-hint">Press a button to start.</p>
+    </div>
+  </section>
+
+  <section class="k-section" aria-labelledby="numbers-title">
+    <h2 class="k-section__title" id="numbers-title">What the full test run found</h2>
+    <p class="k-section__lede">From the committed results file. The attacks are prompt injections: text planted where the AI assistant reads it, telling it to do something it should not.</p>
+    <div class="k-claim-strip" id="counters"></div>
+  </section>
+
+</main>
+
+<footer class="k-footer">
+  <div class="k-container">
+    <p>Source, tests and results: <a href="https://github.com/samad-zeeshan/Warden">github.com/samad-zeeshan/Warden</a>. <span data-w-provenance></span></p>
+  </div>
+</footer>
+
+<script src="kit.js" defer></script>
+<script src="data/replay.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
