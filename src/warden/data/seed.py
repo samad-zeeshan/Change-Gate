@@ -1,3 +1,4 @@
+"""Two fixture tenants and five change requests that exercise every decision path."""
 
 from __future__ import annotations
 

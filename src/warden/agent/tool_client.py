@@ -1,6 +1,5 @@
 """In-process tool client that crosses the same boundary as an MCP call."""
 
-
 from __future__ import annotations
 
 from .resilience import DomainToolError, ToolClient

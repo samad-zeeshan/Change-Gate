@@ -1,3 +1,4 @@
+"""OAuth protected-resource metadata, so clients can find the authorization server."""
 
 from __future__ import annotations
 

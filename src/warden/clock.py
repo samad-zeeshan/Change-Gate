@@ -1,3 +1,4 @@
+"""Injectable clocks, so the server, not the caller, decides what time it is."""
 
 from __future__ import annotations
 

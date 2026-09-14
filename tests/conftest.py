@@ -1,3 +1,4 @@
+"""Shared fixtures: an acme repository, a fixed clock, and services bound to one request."""
 
 from __future__ import annotations
 

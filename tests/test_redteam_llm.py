@@ -1,3 +1,4 @@
+"""The language-model planner mode, driven by fake planners."""
 
 from __future__ import annotations
 

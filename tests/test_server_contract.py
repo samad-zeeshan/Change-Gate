@@ -1,6 +1,5 @@
 """The agent sends only what the server declares, and server-side refusals are audited."""
 
-
 from __future__ import annotations
 
 import dataclasses

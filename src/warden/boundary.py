@@ -1,9 +1,6 @@
-"""
-The server side of the agent-to-tool boundary, shared by MCP and in-process calls.
+"""The server side of the agent-to-tool boundary, shared by MCP and in-process calls.
 
-Every call is resolved against the pinned registry, checked against the caller's
-roles and its credential binding, and only then dispatched. A rejection is written
-to the audit chain before the error goes back, and the call never runs.
+A refused call is audited before the error goes back, and it never runs.
 """
 
 from __future__ import annotations

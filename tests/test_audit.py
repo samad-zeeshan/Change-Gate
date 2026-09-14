@@ -1,6 +1,5 @@
 """The audit chain: one row per governed write, and tampering breaks verification."""
 
-
 from __future__ import annotations
 
 import dataclasses

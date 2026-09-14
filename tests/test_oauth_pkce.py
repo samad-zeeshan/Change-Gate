@@ -1,3 +1,4 @@
+"""PKCE generation and the authorization URL the console builds."""
 
 from __future__ import annotations
 

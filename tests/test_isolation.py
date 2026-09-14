@@ -1,3 +1,4 @@
+"""Tenant isolation in memory and, when a DSN is set, under Postgres row-level security."""
 
 from __future__ import annotations
 

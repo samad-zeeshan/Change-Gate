@@ -1,3 +1,4 @@
+"""Injection cases end to end through the real agent and boundary, plus the ablation."""
 
 from __future__ import annotations
 

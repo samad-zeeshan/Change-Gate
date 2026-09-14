@@ -1,6 +1,5 @@
 """Closed-world resolution of tool calls on both sides of the boundary."""
 
-
 from __future__ import annotations
 
 import pytest

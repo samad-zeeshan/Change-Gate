@@ -1,3 +1,4 @@
+"""Hand-written SVG charts for the reliability eval and the red-team runs."""
 
 from __future__ import annotations
 

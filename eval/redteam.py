@@ -1,11 +1,6 @@
-"""
-Run prompt-injection cases through the real agent and the real boundary, and score them.
+"""Run prompt-injection cases through the real agent and boundary, and score them.
 
-Each case gets a fresh two-tenant world. The LangGraph agent runs on the target
-request with the injected text in place, then the calls a steered planner would
-make go through the same client stack. The oracles below are written separately
-from the policy file, so a mistake in one is not hidden by the same mistake in
-the other.
+Oracles are written apart from the policy file, so one mistake cannot hide the other.
 """
 
 from __future__ import annotations

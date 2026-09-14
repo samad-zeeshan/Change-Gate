@@ -1,3 +1,4 @@
+"""The free-text description reaches people and the agent but never the score."""
 
 from __future__ import annotations
 

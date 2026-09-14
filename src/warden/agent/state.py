@@ -1,3 +1,4 @@
+"""State carried between graph nodes and the dependencies each run needs."""
 
 from __future__ import annotations
 

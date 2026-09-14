@@ -1,3 +1,4 @@
+"""Property tests for the risk engine: monotonic factors and freeze dominance."""
 
 from __future__ import annotations
 

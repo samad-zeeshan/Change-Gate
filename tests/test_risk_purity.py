@@ -1,3 +1,4 @@
+"""The risk engine is pure: same inputs, same score and fingerprint."""
 
 from __future__ import annotations
 

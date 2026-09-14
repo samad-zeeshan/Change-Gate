@@ -1,3 +1,4 @@
+"""Run the reliability eval: injected transport failures, resilience on and off."""
 
 from __future__ import annotations
 

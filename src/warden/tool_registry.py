@@ -1,10 +1,6 @@
-"""
-The pinned tool registry and closed-world resolution of tool calls.
+"""The pinned tool registry and closed-world resolution of tool calls.
 
-A call to a tool that is not here, or with an argument, type or omission the
-signature does not allow, is rejected before anything runs. The server builds its
-MCP tool descriptions from this file, and a test checks the advertised schemas
-against it.
+An unknown tool, argument, type or omission is rejected before anything runs.
 """
 
 from __future__ import annotations

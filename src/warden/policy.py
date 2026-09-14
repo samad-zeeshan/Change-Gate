@@ -1,10 +1,6 @@
-"""
-The action policy: one check every writing tool runs before it has an effect.
+"""The action policy every write checks before it has an effect.
 
-Policy lives in the versioned file policy/warden.policy.json, never in a
-prompt. Rules are read top to bottom, the first match wins, and anything no rule
-matches gets the file's default, which is deny. Set WARDEN_POLICY to point
-at a different file.
+Rules live in a versioned file, never a prompt. First match wins, and the default is deny.
 """
 
 from __future__ import annotations

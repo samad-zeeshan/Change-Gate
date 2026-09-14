@@ -1,6 +1,5 @@
 """Explainers that turn a recorded decision into plain words. None of them can change it."""
 
-
 from __future__ import annotations
 
 import os

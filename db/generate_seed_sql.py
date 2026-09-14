@@ -1,3 +1,4 @@
+"""Regenerate db/03_seed.sql from the Python seed so both backends start from the same data."""
 
 from __future__ import annotations
 

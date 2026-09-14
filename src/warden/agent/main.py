@@ -1,6 +1,5 @@
 """Run the agent on one change request, in-process or against a live MCP server."""
 
-
 from __future__ import annotations
 
 import argparse

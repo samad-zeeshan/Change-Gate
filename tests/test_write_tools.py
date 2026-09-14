@@ -1,3 +1,4 @@
+"""The four writes under the action policy, with every denial audited."""
 
 from __future__ import annotations
 

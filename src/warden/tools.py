@@ -1,9 +1,6 @@
-"""
-The tool surface: read context, validate, assess risk, and the four writes.
+"""The tool surface: context reads, validation, risk, and the four writes.
 
-record_decision runs the gate and re-runs validation and risk so the stored
-decision never trusts the agent's earlier reads. route_change, approve_change and
-deny_change are the human side. Every write asks the action policy first.
+Every write asks the action policy first and records its evidence in the audit chain.
 """
 
 from __future__ import annotations

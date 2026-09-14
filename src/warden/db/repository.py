@@ -1,6 +1,5 @@
 """The repository interface and the in-memory backend used offline and in the eval."""
 
-
 from __future__ import annotations
 
 import copy

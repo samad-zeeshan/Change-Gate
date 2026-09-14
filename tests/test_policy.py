@@ -1,3 +1,4 @@
+"""The action policy: rule loading, first match wins, and default deny."""
 
 from __future__ import annotations
 

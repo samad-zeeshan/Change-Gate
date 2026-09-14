@@ -1,6 +1,5 @@
 """Shape and coverage checks for the injection corpus."""
 
-
 from __future__ import annotations
 
 import json

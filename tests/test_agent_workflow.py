@@ -1,6 +1,5 @@
 """The agent workflow reaches the expected decision for each seed scenario."""
 
-
 from __future__ import annotations
 
 import pytest

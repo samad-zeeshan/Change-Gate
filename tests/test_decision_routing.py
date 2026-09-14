@@ -1,3 +1,4 @@
+"""Decision routing: which band and hard rules lead to approve, route or deny."""
 
 from __future__ import annotations
 

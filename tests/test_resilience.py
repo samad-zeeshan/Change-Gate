@@ -1,3 +1,4 @@
+"""Retries, backoff and fallbacks in the agent's resilience layer."""
 
 from __future__ import annotations
 

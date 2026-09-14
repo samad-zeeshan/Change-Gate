@@ -1,3 +1,4 @@
+"""Each risk factor on its own: blast radius, environment, magnitude, recency."""
 
 from __future__ import annotations
 

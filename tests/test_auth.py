@@ -1,3 +1,4 @@
+"""Bearer token validation: signature, issuer, audience, expiry, subject and scopes."""
 
 from __future__ import annotations
 

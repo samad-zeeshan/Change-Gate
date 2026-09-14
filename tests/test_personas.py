@@ -1,3 +1,4 @@
+"""Persona mapping from signed claims, tool roles, and the realm export that issues them."""
 
 from __future__ import annotations
 
