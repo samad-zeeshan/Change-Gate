@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-09-25T17:12:01.947157+00:00",
+  "python": "3.14.4",
+  "machine": "Windows 11, AMD64",
+  "explainer": {
+    "no_llm": "deterministic template",
+    "llm": "qwen/qwen3.5-9b in LM Studio on the same machine, reasoning off, two calls per decision (explanation and routing message)"
+  },
+  "http_note": "MCP over streamable HTTP on 127.0.0.1, one session per tool call, task credential exchange included",
+  "results": {
+    "inprocess": {
+      "no_llm": {
+        "n": 200,
+        "wrong_decisions": 0,
+        "ms": {
+          "p50": 3.8,
+          "p95": 4.8,
+          "p99": 8.3
+        },
+        "mean_ms": 4.1
+      },
+      "llm": {
+        "n": 30,
+        "wrong_decisions": 0,
+        "ms": {
+          "p50": 55844.0,
+          "p95": 101783.0,
+          "p99": 106403.8
+        },
+        "mean_ms": 63280.0
+      }
+    },
+    "http": {
+      "no_llm": {
+        "n": 100,
+        "wrong_decisions": 0,
+        "ms": {
+          "p50": 3388.3,
+          "p95": 3508.6,
+          "p99": 3551.9
+        },
+        "mean_ms": 3393.3
+      },
+      "llm": {
+        "n": 30,
+        "wrong_decisions": 0,
+        "ms": {
+          "p50": 69721.0,
+          "p95": 120336.7,
+          "p99": 126804.0
+        },
+        "mean_ms": 73103.4
+      }
+    }
+  }
+}
