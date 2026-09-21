@@ -8,9 +8,12 @@
   var DATA = (window.DEMO_DATA || {}).replay;
   var stage = document.getElementById("stage");
   var picker = document.getElementById("attack-pick");
-  var timers = [];
-  // Reduced motion gets the whole replay at once instead of line by line.
-  var STEP_MS = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
+  var announce = document.getElementById("announce");
+  var motionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  // Every run gets a token. A newer press bumps it, and anything still printing for the old run stops.
+  var runToken = 0;
+
+  function reduced() { return !!(motionQuery && motionQuery.matches); }
 
   var LAYER = {
     agent_resolver: "never sent: not a tool or argument the agent may use",
@@ -36,23 +39,107 @@
     return n;
   }
 
-  function reset(title) {
-    timers.forEach(clearTimeout);
-    timers = [];
+  function wait(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, reduced() ? 0 : ms); });
+  }
+
+  /* ------------------------------------------------------------ spring values */
+
+  // A critically damped spring (Apple's damping 1.0). It starts from whatever value is on screen
+  // and keeps its velocity, so a second change mid-flight retargets instead of jumping.
+  var springs = new WeakMap();
+
+  function spring(key, to, apply, opts) {
+    opts = opts || {};
+    var s = springs.get(key);
+    if (!s) { s = { x: opts.from !== undefined ? opts.from : to, v: 0, raf: 0 }; springs.set(key, s); }
+    s.to = to;
+    if (reduced()) { cancelAnimationFrame(s.raf); s.raf = 0; s.x = to; s.v = 0; apply(to); return; }
+    var omega = 2 * Math.PI / (opts.response || 0.45);
+    var eps = opts.eps || 0.01;
+    var last = 0;
+    cancelAnimationFrame(s.raf);
+    function step(now) {
+      var dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+      last = now;
+      // Four substeps keep the integration stable on 30 Hz frames.
+      for (var i = 0; i < 4; i++) {
+        var h = dt / 4;
+        var a = -omega * omega * (s.x - s.to) - 2 * omega * s.v;
+        s.v += a * h;
+        s.x += s.v * h;
+      }
+      if (Math.abs(s.x - s.to) < eps && Math.abs(s.v) < eps * 10) {
+        s.x = s.to; s.v = 0; s.raf = 0; apply(s.to); return;
+      }
+      apply(s.x);
+      s.raf = requestAnimationFrame(step);
+    }
+    s.raf = requestAnimationFrame(step);
+  }
+
+  function countTo(node, to, decimals, from) {
+    spring(node, to, function (x) { node.textContent = x.toFixed(decimals || 0); },
+      { from: from, response: 0.9, eps: decimals ? 0.005 : 0.3 });
+  }
+
+  /* ------------------------------------------------------------------ buttons */
+
+  function setBusy(which, busy) {
+    document.querySelectorAll("[data-run]").forEach(function (b) {
+      var on = busy && b.dataset.run === which;
+      if (on) { b.setAttribute("aria-busy", "true"); } else { b.removeAttribute("aria-busy"); }
+      if (!on) { b.querySelector(".btn__progress").style.transform = "scaleX(0)"; }
+    });
+  }
+
+  function setProgress(which, fraction) {
+    var b = document.querySelector('[data-run="' + which + '"] .btn__progress');
+    if (b) { b.style.transform = "scaleX(" + Math.max(0, Math.min(1, fraction)).toFixed(3) + ")"; }
+  }
+
+  /* -------------------------------------------------------------------- stage */
+
+  function reset(title, meta) {
     stage.textContent = "";
-    stage.appendChild(el("h3", {}, title));
+    var head = el("div", { "class": "stage__head" });
+    head.appendChild(el("h3", {}, title));
+    if (meta) { head.appendChild(el("span", { "class": "stage__meta" }, meta)); }
+    stage.appendChild(head);
+    var body = el("div", { "class": "stage__body" });
+    stage.appendChild(body);
+    return body;
   }
 
-  function later(i, fn) {
-    timers.push(setTimeout(fn, i * STEP_MS));
-  }
-
-  function logLine(list, kind, who, text, cls) {
+  // Types one line like a teletype. Screen readers get the whole line at once from a hidden copy.
+  function printLine(list, token, n, kind, who, text, cls) {
     var li = el("li", { "data-kind": kind });
-    li.appendChild(el("span", { "class": "w-who" }, who));
-    var body = el("span", cls ? { "class": cls } : {}, text);
+    li.appendChild(el("span", { "class": "tape__n", "aria-hidden": "true" }, String(n)));
+    li.appendChild(el("span", { "class": "tape__who" }, who));
+    var body = el("span", { "class": "tape__text" + (cls ? " " + cls : "") });
+    var shown = el("span", { "aria-hidden": "true" });
+    body.appendChild(shown);
+    body.appendChild(el("span", { "class": "sr-only" }, text));
     li.appendChild(body);
     list.appendChild(li);
+    if (reduced()) { shown.textContent = text; return Promise.resolve(); }
+    var caret = el("span", { "class": "tape__caret", "aria-hidden": "true" });
+    body.insertBefore(caret, shown.nextSibling);
+    // About 11 ms a character, but no line takes longer than 420 ms, so long lines do not stall the run.
+    var total = Math.min(420, Math.max(120, text.length * 11));
+    return new Promise(function (resolve) {
+      var start = 0;
+      function frame(now) {
+        if (token !== runToken) { resolve(); return; }
+        if (!start) { start = now; }
+        var k = Math.min(1, (now - start) / total);
+        shown.textContent = text.slice(0, Math.ceil(text.length * k));
+        if (k < 1) { requestAnimationFrame(frame); return; }
+        caret.remove();
+        resolve();
+      }
+      requestAnimationFrame(frame);
+    });
   }
 
   function outcome(call) {
@@ -66,23 +153,49 @@
     return "ok";
   }
 
-  function playDecision(run, title) {
-    reset(title);
-    var list = el("ol", { "class": "w-log" });
-    stage.appendChild(list);
-    run.calls.forEach(function (c, i) {
-      later(i, function () { logLine(list, "agent", "agent", c.tool + "  " + outcome(c)); });
-    });
-    later(run.calls.length + 1, function () {
-      var good = run.decision === "auto_approve";
-      var box = el("div", { "class": "w-verdict" + (good ? "" : " w-verdict--bad") });
-      box.appendChild(el("strong", {}, good
-        ? "Approved on its own. Risk " + run.risk.score + ", " + run.risk.band + "."
-        : "Blocked. Risk " + run.risk.score + ", " + run.risk.band + "."));
-      box.appendChild(el("p", {}, (run.reasons || []).join(" ")));
-      box.appendChild(el("p", { "class": "w-hint" }, run.explanation || ""));
-      stage.appendChild(box);
-    });
+  async function playLines(which, token, list, lines) {
+    for (var i = 0; i < lines.length; i++) {
+      if (token !== runToken) { return false; }
+      var l = lines[i];
+      await printLine(list, token, i + 1, l.kind, l.who, l.text, l.cls);
+      setProgress(which, (i + 1) / (lines.length + 1));
+      await wait(70);
+    }
+    return token === runToken;
+  }
+
+  function verdict(body, good, headline, score, rest) {
+    var box = el("div", { "class": "verdict" + (good ? "" : " verdict--deny") });
+    var strong = el("strong", {});
+    strong.appendChild(document.createTextNode(headline));
+    if (score !== undefined) {
+      strong.appendChild(document.createTextNode(" Risk "));
+      var n = el("span", { "class": "num" }, "0.0");
+      strong.appendChild(n);
+      strong.appendChild(document.createTextNode(rest));
+      countTo(n, score, 1, 0);
+    }
+    box.appendChild(strong);
+    body.appendChild(box);
+    return box;
+  }
+
+  async function playDecision(which, run, title, meta) {
+    var token = ++runToken;
+    setBusy(which, true);
+    var body = reset(title, meta);
+    var list = el("ol", { "class": "tape", "aria-label": "Tool calls", translate: "no" });
+    body.appendChild(list);
+    var lines = run.calls.map(function (c) { return { kind: "agent", who: "agent", text: c.tool + "  " + outcome(c) }; });
+    if (!(await playLines(which, token, list, lines))) { return; }
+    await wait(160);
+    if (token !== runToken) { return; }
+    var good = run.decision === "auto_approve";
+    var box = verdict(body, good, good ? "Approved on its own." : "Blocked.", run.risk.score, ", " + run.risk.band + ".");
+    box.appendChild(el("p", {}, (run.reasons || []).join(" ")));
+    box.appendChild(el("p", { "class": "verdict__aside" }, run.explanation || ""));
+    announce.textContent = (good ? "Approved on its own. " : "Blocked. ") + "Risk " + run.risk.score + ", " + run.risk.band + ".";
+    setBusy(which, false);
   }
 
   function planted(a) {
@@ -96,39 +209,42 @@
     return parts.join("\n");
   }
 
-  function playAttack(a) {
-    reset(a.title);
-    stage.appendChild(el("p", { "class": "w-hint" }, "Goal: " + (GOAL[a.goal] || a.goal) + ". Attacker: " + a.attacker + "."));
-    stage.appendChild(el("div", { "class": "w-planted" }, planted(a)));
-    var list = el("ol", { "class": "w-log" });
-    stage.appendChild(list);
-    var i = 0;
-    a.events.filter(function (e) { return e.phase === "agent"; }).forEach(function (e) {
-      later(i++, function () {
-        logLine(list, "agent", "agent", e.tool + "  " + (e.ok ? (e.decision ? "decision: " + e.decision : "ok") : "refused"));
-      });
+  async function playAttack(a) {
+    var token = ++runToken;
+    setBusy("attack", true);
+    var body = reset(a.title, a.id);
+    body.appendChild(el("p", { "class": "goal" }, "Goal: " + (GOAL[a.goal] || a.goal) + ". Attacker: " + a.attacker + "."));
+    var box = el("div", { "class": "planted" });
+    box.appendChild(el("span", { "class": "planted__label" }, "What the attacker planted"));
+    box.appendChild(el("p", { "class": "planted__text" }, planted(a)));
+    body.appendChild(box);
+    var list = el("ol", { "class": "tape", "aria-label": "Tool calls", translate: "no" });
+    body.appendChild(list);
+
+    var lines = a.events.filter(function (e) { return e.phase === "agent"; }).map(function (e) {
+      return { kind: "agent", who: "agent", text: e.tool + "  " + (e.ok ? (e.decision ? "decision: " + e.decision : "ok") : "refused") };
     });
     a.steered.forEach(function (s) {
-      later(i++, function () {
-        var why = s.ok ? "went through" : (LAYER[s.blocked_by] || s.error || "refused") + (s.blocked_by === "action_policy" ? s.rule : "");
-        logLine(list, "steered", "tricked", s.tool + "  " + why, s.ok ? "w-ok" : "w-no");
-      });
+      var why = s.ok ? "went through" : (LAYER[s.blocked_by] || s.error || "refused") + (s.blocked_by === "action_policy" ? s.rule : "");
+      lines.push({ kind: "steered", who: "tricked", text: s.tool + "  " + why, cls: s.ok ? "is-ok" : "is-no" });
     });
     var refusals = a.audit.filter(function (e) { return e.decision === "blocked"; });
     var unsent = a.steered.every(function (s) { return !s.reached_server; });
     var chainText = " Chain " + (a.audit_chain_verified ? "verifies." : "does not verify.");
-    later(i++, function () {
-      var text = unsent && !refusals.length
+    lines.push({
+      kind: "audit", who: "audit log",
+      text: unsent && !refusals.length
         ? "Stopped before it was sent, so nothing reached the server to log." + chainText
-        : refusals.length + " refusal" + (refusals.length === 1 ? "" : "s") + " written to the log." + chainText;
-      logLine(list, "audit", "audit log", text);
+        : refusals.length + " refusal" + (refusals.length === 1 ? "" : "s") + " written to the log." + chainText
     });
-    later(i + 1, function () {
-      var box = el("div", { "class": "w-verdict" + (a.attack_succeeded ? " w-verdict--bad" : "") });
-      box.appendChild(el("strong", {}, a.attack_succeeded ? "The attack had an effect." : "Contained. Nothing the planted text asked for happened."));
-      box.appendChild(el("p", { "class": "w-hint" }, "The agent's own decision still came from the server's rules, not from the planted text."));
-      stage.appendChild(box);
-    });
+    if (!(await playLines("attack", token, list, lines))) { return; }
+    await wait(160);
+    if (token !== runToken) { return; }
+    var head = a.attack_succeeded ? "The attack had an effect." : "Contained. Nothing the planted text asked for happened.";
+    var v = verdict(body, !a.attack_succeeded, head);
+    v.appendChild(el("p", { "class": "verdict__aside" }, "The agent's own decision still came from the server's rules, not from the planted text."));
+    announce.textContent = head;
+    setBusy("attack", false);
   }
 
   /* --------------------------------------------------------------- the chain */
@@ -175,92 +291,171 @@
     { label: "Lower its recorded risk score to 5", find: /"risk_score":[0-9.]+/, put: "\"risk_score\":5.0", where: "cr-003" }
   ];
 
-  function verify(chain, rows, status) {
+  // Walks the chain top to bottom, one row at a time, so the break shows where it starts and
+  // how it runs through every entry after it.
+  async function verify(ctx) {
+    var token = ++ctx.pass;
     var prev = "0".repeat(64);
     var broken = false;
-    return chain.reduce(function (p, entry, i) {
-      return p.then(function () {
-        return sha256(prev + "\n" + entry.blob).then(function (digest) {
-          var ok = !broken && entry.prev_hash === prev && digest === entry.entry_hash;
-          rows[i].dataset.state = ok ? "ok" : (broken ? "broken" : "edited");
-          rows[i].lastChild.textContent = ok ? "verified" : (broken ? "after the break" : "hash does not match");
-          if (!ok) { broken = true; }
-          prev = entry.entry_hash;
-        });
-      });
-    }, Promise.resolve()).then(function () {
-      status.dataset.ok = String(!broken);
-      status.textContent = broken ? "Chain verification failed. The edit shows, and every entry after it is unverifiable." : "Chain verifies: every entry hashes to the value stored after it.";
-    });
+    var good = 0;
+    ctx.apply.disabled = true;
+    ctx.undo.disabled = true;
+    ctx.status.dataset.ok = "";
+    ctx.text.textContent = "of " + ctx.chain.length + " verified so far.";
+    ctx.rows.forEach(function (r) { r.dataset.state = "pending"; r.cells[5].textContent = "…"; });
+    for (var i = 0; i < ctx.chain.length; i++) {
+      var entry = ctx.chain[i];
+      var digest = await sha256(prev + "\n" + entry.blob);
+      if (token !== ctx.pass || ctx.token !== runToken) { return; }
+      var ok = !broken && entry.prev_hash === prev && digest === entry.entry_hash;
+      var row = ctx.rows[i];
+      var hashCell = row.cells[4];
+      hashCell.textContent = "";
+      if (!ok && !broken) {
+        hashCell.appendChild(el("s", { title: "stored hash" }, entry.entry_hash.slice(0, 12)));
+        hashCell.appendChild(document.createTextNode(" "));
+        hashCell.appendChild(el("span", { "class": "got", title: "hash of the edited entry" }, digest.slice(0, 12)));
+      } else {
+        hashCell.textContent = entry.entry_hash.slice(0, 12);
+      }
+      row.dataset.state = ok ? "ok" : (broken ? "broken" : "edited");
+      row.cells[5].textContent = ok ? "verified" : (broken ? "after the break" : "hash does not match");
+      if (!ok) { broken = true; } else { good += 1; }
+      // Rows from the edit down slide right together, like a strip of paper torn at that line.
+      // The offset goes straight onto the five cells, not through an inherited custom property.
+      var tear = broken && !reduced() ? 10 : 0;
+      (function (cells, t) {
+        spring(cells[0], t, function (x) {
+          var v = x > 0.01 ? "translateX(" + x.toFixed(2) + "px)" : "";
+          for (var j = 1; j < cells.length; j++) { cells[j].style.transform = v; }
+        }, { from: 0, response: 0.4 });
+      })(row.cells, tear);
+      countTo(ctx.count, good);
+      prev = entry.entry_hash;
+      setProgress("tamper", (i + 1) / ctx.chain.length);
+      await wait(broken ? 170 : 90);
+    }
+    if (token !== ctx.pass) { return; }
+    countTo(ctx.count, good);
+    ctx.status.dataset.ok = String(!broken);
+    ctx.text.textContent = broken
+      ? "of " + ctx.chain.length + " entries verify. The edit shows, and every entry after it can no longer be trusted."
+      : "of " + ctx.chain.length + " entries verify. Every entry hashes to the value stored after it.";
+    announce.textContent = good + " " + ctx.text.textContent;
+    ctx.apply.disabled = false;
+    ctx.undo.disabled = !broken;
+    setBusy("tamper", false);
   }
 
   function playTamper() {
-    reset("The audit log from the two decisions above");
+    var token = ++runToken;
+    setBusy("tamper", true);
+    var body = reset("The audit log from the two decisions above", DATA.chain.length + " entries, SHA-256 chained");
     var chain = DATA.chain.map(function (e) { return Object.assign({}, e); });
-    var table = el("table", { "class": "w-chain" });
+    var table = el("table", { "class": "chain", translate: "no" });
+    var thead = el("thead");
     var head = el("tr");
-    ["#", "action", "request", "hash", "check"].forEach(function (h) { head.appendChild(el("th", {}, h)); });
-    table.appendChild(head);
+    ["", "#", "action", "request", "hash", "check"].forEach(function (h, i) {
+      head.appendChild(el("th", { scope: "col" }, h));
+      if (i === 0) { head.lastChild.appendChild(el("span", { "class": "sr-only" }, "chain link")); }
+    });
+    thead.appendChild(head);
+    table.appendChild(thead);
+    var tbody = el("tbody");
     var rows = chain.map(function (e) {
-      var tr = el("tr");
-      tr.appendChild(el("td", {}, String(e.seq)));
+      var tr = el("tr", { "data-state": "pending" });
+      tr.appendChild(el("td", { "class": "link", "aria-hidden": "true" }));
+      tr.appendChild(el("td", { "class": "c-seq" }, String(e.seq)));
       tr.appendChild(el("td", {}, e.action + (e.decision && e.decision !== "granted" && e.decision !== "recorded" ? ": " + e.decision : "")));
       tr.appendChild(el("td", {}, e.request_id || "-"));
-      tr.appendChild(el("td", { "class": "w-mono" }, e.entry_hash.slice(0, 12)));
-      tr.appendChild(el("td", {}, "..."));
-      table.appendChild(tr);
+      tr.appendChild(el("td", { "class": "c-hash" }, e.entry_hash.slice(0, 12)));
+      tr.appendChild(el("td", { "class": "c-check" }, "…"));
+      tbody.appendChild(tr);
       return tr;
     });
-    var scroller = el("div", { "class": "k-scroll-x" });
+    table.appendChild(tbody);
+    var scroller = el("div", { "class": "chain-scroll", tabindex: "0", role: "region", "aria-label": "Audit chain" });
     scroller.appendChild(table);
-    stage.appendChild(scroller);
-    var status = el("p", { "class": "w-status" });
-    stage.appendChild(status);
-    var controls = el("div", { "class": "w-controls" });
-    var pick = el("select", { "class": "w-select", "aria-label": "Edit to make" });
-    EDITS.forEach(function (e, i) { pick.appendChild(el("option", { value: String(i) }, e.label)); });
-    var apply = el("button", { "class": "w-btn w-btn--surprise", type: "button" }, "Edit the old entry");
-    var undo = el("button", { "class": "w-btn", type: "button" }, "Put it back");
-    controls.appendChild(pick); controls.appendChild(apply); controls.appendChild(undo);
-    stage.appendChild(controls);
-    stage.appendChild(el("p", { "class": "w-hint" }, "The check runs here in your browser with SHA-256 over the exact bytes the server hashed."));
+    body.appendChild(scroller);
 
+    var status = el("p", { "class": "chain-status" });
+    var count = el("span", { "class": "chain-status__count" }, "0");
+    status.appendChild(count);
+    status.appendChild(document.createTextNode(" "));
+    var text = el("span", { "class": "chain-status__text" });
+    status.appendChild(text);
+    body.appendChild(status);
+
+    var controls = el("div", { "class": "tamper-controls" });
+    var field = el("div", { "class": "field" });
+    field.appendChild(el("label", { "for": "edit-pick" }, "Edit to make"));
+    var pick = el("select", { "class": "select", id: "edit-pick" });
+    EDITS.forEach(function (e, i) { pick.appendChild(el("option", { value: String(i) }, e.label)); });
+    field.appendChild(pick);
+    var apply = el("button", { "class": "btn btn--small btn--deny", type: "button" }, "Edit the old entry");
+    var undo = el("button", { "class": "btn btn--small", type: "button", disabled: "" }, "Put it back");
+    controls.appendChild(field); controls.appendChild(apply); controls.appendChild(undo);
+    body.appendChild(controls);
+    body.appendChild(el("p", { "class": "hint" }, "The check runs here in your browser with SHA-256 over the exact bytes the server hashed."));
+
+    var ctx = { chain: chain, rows: rows, status: status, text: text, count: count, apply: apply, undo: undo, pass: 0, token: token };
     apply.addEventListener("click", function () {
       var edit = EDITS[Number(pick.value)];
       chain.forEach(function (e, i) { e.blob = DATA.chain[i].blob; });
       var target = chain.filter(function (e) { return e.action === "record_decision" && e.request_id === edit.where; })[0];
       target.blob = target.blob.replace(edit.find, edit.put);
-      verify(chain, rows, status);
+      setBusy("tamper", true);
+      verify(ctx);
     });
     undo.addEventListener("click", function () {
       chain.forEach(function (e, i) { e.blob = DATA.chain[i].blob; });
-      verify(chain, rows, status);
+      undo.disabled = true;
+      setBusy("tamper", true);
+      verify(ctx).then(function () { apply.focus(); });
     });
-    verify(chain, rows, status);
+    verify(ctx);
   }
 
-  /* ------------------------------------------------------------------ wiring */
+  /* ------------------------------------------------------------------ totals */
 
   function counters() {
     var c = DATA.counters;
     var box = document.getElementById("counters");
-    [
-      [String(c.attacks_succeeded), "of " + c.cases, "attacks had any effect"],
-      [String(c.unsafe_auto_approvals), "", "unsafe approvals"],
-      [String(c.cross_tenant_reads), "", "reads of another customer's data"],
-      [String(c.audit_gaps), "", "actions missing from the log"],
-      [c.reachable_writes_v1 + " to " + c.reachable_writes_now, "", "writes an attacker could still make after a task, version 1 to now"]
-    ].forEach(function (row) {
-      var claim = el("div", { "class": "k-claim" });
-      var value = el("span", { "class": "k-claim__value" }, row[0]);
-      if (row[1]) { value.appendChild(el("span", { "class": "k-claim__unit" }, row[1])); }
-      claim.appendChild(value);
-      claim.appendChild(el("span", { "class": "k-claim__label" }, row[2]));
-      box.appendChild(claim);
+    var rows = [
+      { value: c.attacks_succeeded, unit: "of " + c.cases, label: "attacks had any effect" },
+      { value: c.unsafe_auto_approvals, label: "unsafe approvals" },
+      { value: c.cross_tenant_reads, label: "reads of another customer's data" },
+      { value: c.audit_gaps, label: "actions missing from the log" },
+      { value: c.reachable_writes_now, from: c.reachable_writes_v1, label: "writes an attacker could still make after a task",
+        note: c.reachable_writes_v1 + " in version 1, " + c.reachable_writes_now + " now" }
+    ];
+    var animated = [];
+    rows.forEach(function (r) {
+      var li = el("li");
+      var label = el("span", { "class": "totals__label" }, r.label);
+      if (r.note) { label.appendChild(el("small", {}, r.note)); }
+      li.appendChild(label);
+      var value = el("span", { "class": "totals__value" + (r.value === 0 ? " is-zero" : "") });
+      var n = el("span", {}, String(r.from !== undefined ? r.from : r.value));
+      value.appendChild(n);
+      if (r.unit) { value.appendChild(el("small", {}, r.unit)); }
+      li.appendChild(value);
+      box.appendChild(li);
+      if (r.from !== undefined) { animated.push({ node: n, from: r.from, to: r.value }); }
     });
-    var src = el("p", { "class": "w-hint" }, "Source: " + c.source + ". With the boundary switched off, " + c.ablation_attacks_succeeded + " of " + c.cases + " attacks worked. Version 1 was measured on " + c.v1_cases + " attacks.");
+    var src = el("p", { "class": "source" }, "Source: " + c.source + ". With the boundary switched off, " + c.ablation_attacks_succeeded + " of " + c.cases + " attacks worked. Version 1 was measured on " + c.v1_cases + " attacks.");
     box.parentNode.appendChild(src);
+
+    // The version 1 figure counts down to today's once the row is on screen, so the drop is seen, not just read.
+    function run() { animated.forEach(function (a) { countTo(a.node, a.to, 0, a.from); }); }
+    if (!("IntersectionObserver" in window) || reduced()) { run(); return; }
+    var io = new IntersectionObserver(function (entries) {
+      if (entries.some(function (e) { return e.isIntersecting; })) { io.disconnect(); setTimeout(run, 250); }
+    }, { threshold: 0.6 });
+    io.observe(box.lastChild);
   }
+
+  /* ------------------------------------------------------------------ wiring */
 
   function fillPicker() {
     var groups = {};
@@ -275,8 +470,9 @@
 
   function press(which) {
     document.querySelectorAll("[data-run]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.run === which)); });
-    if (which === "safe") { playDecision(DATA.safe, "A dev feature flag, cr-001"); }
-    if (which === "dangerous") { playDecision(DATA.dangerous, "A prod change inside a freeze window, cr-003"); }
+    announce.textContent = "";
+    if (which === "safe") { playDecision("safe", DATA.safe, "A dev feature flag", DATA.safe.request_id); }
+    if (which === "dangerous") { playDecision("dangerous", DATA.dangerous, "A prod change inside a freeze window", DATA.dangerous.request_id); }
     if (which === "attack") {
       var a = DATA.attacks.filter(function (x) { return x.id === picker.value; })[0] || DATA.attacks[0];
       playAttack(a);
@@ -284,9 +480,16 @@
     if (which === "tamper") { playTamper(); }
   }
 
-  if (!DATA) { stage.textContent = "The recorded runs did not load."; return; }
-  document.querySelector("[data-w-badge]").textContent = "Recorded runs, commit " + DATA.commit + ", " + DATA.generated_at.slice(0, 10);
+  if (!DATA) {
+    stage.textContent = "";
+    stage.appendChild(el("div", { "class": "stage__empty" }, "The recorded runs did not load. The raw data is in data/replay.json."));
+    document.querySelectorAll("[data-run]").forEach(function (b) { b.disabled = true; });
+    picker.disabled = true;
+    return;
+  }
+  document.querySelector("[data-w-badge]").textContent = "commit " + DATA.commit + ", " + DATA.generated_at.slice(0, 10);
   document.querySelector("[data-w-provenance]").textContent = "Recorded with " + DATA.recorded_with + ".";
+  document.querySelector("[data-w-attack-count]").textContent = "one of " + DATA.attacks.length + " recorded";
   fillPicker();
   // Start on a case the server itself refuses and logs, the clearest one to watch.
   picker.value = "uaa-rp-01";
